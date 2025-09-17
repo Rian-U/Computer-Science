@@ -124,3 +124,6 @@ while running:
 
 pygame.quit()
 sys.exit()
+
+def test():
+    pass
