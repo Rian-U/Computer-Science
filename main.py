@@ -4,7 +4,8 @@ import sys
 from database.user_db import init_db, register_user, check_user
 from ui.input_box import InputBox
 from ui.button import Button
-from ui.menu_page import MenuPage
+from screens.menu_page import MenuPage
+from screens.settings_page import SettingsPage
 
 pygame.init()
 
@@ -17,7 +18,10 @@ clock = pygame.time.Clock()
 FONT = pygame.font.SysFont(None, 36)
 SMALL_FONT = pygame.font.SysFont(None, 28)
 
-LOGIN, REGISTER, MENU, SIMULATION = 'login', 'register', 'menu', 'simulation'
+show_fps = False
+fullscreen = False
+
+LOGIN, REGISTER, MENU, SETTINGS, SIMULATION = 'login', 'register', 'menu', 'settings', 'simulation'
 screen_state = LOGIN
 
 # Input boxes for login/register
@@ -54,8 +58,24 @@ def go_to_simulation():
     screen_state = SIMULATION
 
 def go_to_settings():
-    # Placeholder for settings page
-    pass
+    global screen_state
+    screen_state = SETTINGS
+
+def back_to_menu():
+    global screen_state
+    screen_state = MENU
+
+def set_show_fps(value):
+    global show_fps
+    show_fps = value
+
+def set_fullscreen(value):
+    global fullscreen, screen
+    fullscreen = value
+    if fullscreen:
+        screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN)
+    else:
+        screen = pygame.display.set_mode((WIDTH, HEIGHT))
 
 def logout():
     switch_to_login()
@@ -71,6 +91,14 @@ menu_page = MenuPage(
     on_settings=go_to_settings,
     on_logout=logout,
     on_quit=quit_program,
+)
+
+settings_page = SettingsPage(
+    screen, FONT, SMALL_FONT,
+    show_fps, fullscreen,
+    on_back=back_to_menu,
+    on_toggle_fps=set_show_fps,
+    on_toggle_fullscreen=set_fullscreen
 )
 
 def try_login():
@@ -115,6 +143,8 @@ while running:
                 back_button.handle_event(event)
         elif screen_state == MENU:
             menu_page.handle_event(event)
+        elif screen_state == SETTINGS:
+            settings_page.handle_event(event)
 
     screen.fill((30, 30, 30))
 
@@ -148,9 +178,15 @@ while running:
             screen.blit(err, (300, 370))
     elif screen_state == MENU:
         menu_page.draw()
+    elif screen_state == SETTINGS:
+        settings_page.draw()
     elif screen_state == SIMULATION:
         sim_title = FONT.render('Simulation Running...', True, (255,255,255))
         screen.blit(sim_title, (WIDTH//2 - sim_title.get_width()//2, HEIGHT//2 - 20))
+
+    if show_fps:
+        fps_text = SMALL_FONT.render(f"FPS: {int(clock.get_fps())}", True, (0,255,0))
+        screen.blit(fps_text, (10, 10))
 
     pygame.display.flip()
     clock.tick(60)
