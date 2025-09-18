@@ -4,6 +4,7 @@ import sys
 from database.user_db import init_db, register_user, check_user
 from ui.input_box import InputBox
 from ui.button import Button
+from ui.menu_page import MenuPage
 
 pygame.init()
 
@@ -16,7 +17,7 @@ clock = pygame.time.Clock()
 FONT = pygame.font.SysFont(None, 36)
 SMALL_FONT = pygame.font.SysFont(None, 28)
 
-LOGIN, REGISTER, SIMULATION = 'login', 'register', 'simulation'
+LOGIN, REGISTER, MENU, SIMULATION = 'login', 'register', 'menu', 'simulation'
 screen_state = LOGIN
 
 # Input boxes for login/register
@@ -44,11 +45,39 @@ def switch_to_login():
     password_box.txt_surface = FONT.render('', True, (255,255,255))
     login_error = ''
 
+def go_to_menu():
+    global screen_state
+    screen_state = MENU
+
+def go_to_simulation():
+    global screen_state
+    screen_state = SIMULATION
+
+def go_to_settings():
+    # Placeholder for settings page
+    pass
+
+def logout():
+    switch_to_login()
+
+def quit_program():
+    pygame.quit()
+    sys.exit()
+    
+
+menu_page = MenuPage(
+    screen, FONT, SMALL_FONT,
+    on_start=go_to_simulation,
+    on_settings=go_to_settings,
+    on_logout=logout,
+    on_quit=quit_program,
+)
+
 def try_login():
     global screen_state, login_error
     if username_box.text and password_box.text:
         if check_user(username_box.text, password_box.text):
-            screen_state = SIMULATION
+            go_to_menu()
         else:
             login_error = 'Incorrect username or password.'
     else:
@@ -59,7 +88,7 @@ def try_register():
     if username_box.text and password_box.text:
         success, msg = register_user(username_box.text, password_box.text)
         if success:
-            screen_state = SIMULATION
+            go_to_menu()
         else:
             login_error = msg
     else:
@@ -84,6 +113,8 @@ while running:
             else:
                 register_submit_button.handle_event(event)
                 back_button.handle_event(event)
+        elif screen_state == MENU:
+            menu_page.handle_event(event)
 
     screen.fill((30, 30, 30))
 
@@ -115,6 +146,8 @@ while running:
         if login_error:
             err = SMALL_FONT.render(login_error, True, (255, 80, 80))
             screen.blit(err, (300, 370))
+    elif screen_state == MENU:
+        menu_page.draw()
     elif screen_state == SIMULATION:
         sim_title = FONT.render('Simulation Running...', True, (255,255,255))
         screen.blit(sim_title, (WIDTH//2 - sim_title.get_width()//2, HEIGHT//2 - 20))
