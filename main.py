@@ -6,6 +6,7 @@ from ui.input_box import InputBox
 from ui.button import Button
 from screens.menu_page import MenuPage
 from screens.settings_page import SettingsPage
+from screens.maps import Map, MAPS, ROOMS
 
 pygame.init()
 
@@ -20,9 +21,11 @@ SMALL_FONT = pygame.font.SysFont(None, 28)
 
 show_fps = False
 fullscreen = False
+current_map = None
 
-LOGIN, REGISTER, MENU, SETTINGS, SIMULATION = 'login', 'register', 'menu', 'settings', 'simulation'
+LOGIN, REGISTER, MENU, SETTINGS, SIMULATION, MAP_SELECT = 'login', 'register', 'menu', 'settings', 'simulation', 'map_select'
 screen_state = LOGIN
+selected_map_name = None
 
 # Input boxes for login/register
 username_box = InputBox(300, 200, 200, 40, font=FONT)
@@ -54,7 +57,16 @@ def go_to_menu():
     screen_state = MENU
 
 def go_to_simulation():
+    go_to_map_select()
+
+def go_to_map_select():
     global screen_state
+    screen_state = MAP_SELECT
+
+def select_map(map_name):
+    global selected_map_name, screen_state, current_map
+    selected_map_name = map_name
+    current_map = Map(screen, MAPS[map_name], ROOMS[map_name])
     screen_state = SIMULATION
 
 def go_to_settings():
@@ -126,6 +138,16 @@ login_button = Button(300, 320, 90, 40, 'Login', try_login, font=FONT)
 register_button = Button(410, 320, 90, 40, 'Register', switch_to_register, font=FONT)
 register_submit_button = Button(300, 320, 90, 40, 'Register', try_register, font=FONT)
 back_button = Button(410, 320, 90, 40, 'Back', switch_to_login, font=FONT)
+map_select_buttons = []
+def create_map_select_buttons():
+    global map_select_buttons
+    map_select_buttons = []
+    y = 200
+    for map_name in MAPS.keys():
+        btn = Button(WIDTH//2 - 100, y, 200, 50, map_name, lambda n=map_name: select_map(n), font=FONT)
+        map_select_buttons.append(btn)
+        y += 70
+create_map_select_buttons()
 
 running = True
 while running:
@@ -145,6 +167,11 @@ while running:
             menu_page.handle_event(event)
         elif screen_state == SETTINGS:
             settings_page.handle_event(event)
+        elif screen_state == MAP_SELECT:
+            for btn in map_select_buttons:
+                btn.handle_event(event)
+        elif screen_state == SIMULATION and current_map:
+            current_map.handle_event(event)
 
     screen.fill((30, 30, 30))
 
@@ -180,9 +207,17 @@ while running:
         menu_page.draw()
     elif screen_state == SETTINGS:
         settings_page.draw()
+    elif screen_state == MAP_SELECT:
+        screen.fill((30, 30, 30))
+        title = FONT.render("Select a Map", True, (255,255,255))
+        screen.blit(title, (WIDTH//2 - title.get_width()//2, 100))
+        for btn in map_select_buttons:
+            btn.draw(screen)
     elif screen_state == SIMULATION:
         sim_title = FONT.render('Simulation Running...', True, (255,255,255))
         screen.blit(sim_title, (WIDTH//2 - sim_title.get_width()//2, HEIGHT//2 - 20))
+        if current_map:
+            current_map.draw()
 
     if show_fps:
         fps_text = SMALL_FONT.render(f"FPS: {int(clock.get_fps())}", True, (0,255,0))
