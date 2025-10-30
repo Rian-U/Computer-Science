@@ -7,6 +7,7 @@ from ui.button import Button
 from screens.menu_page import MenuPage
 from screens.settings_page import SettingsPage
 from screens.maps import Map, MAPS, ROOMS
+from ui.item_bar import ItemBar
 
 pygame.init()
 
@@ -22,6 +23,7 @@ SMALL_FONT = pygame.font.SysFont(None, 28)
 show_fps = False
 fullscreen = False
 current_map = None
+selected_item_category = None
 
 LOGIN, REGISTER, MENU, SETTINGS, SIMULATION, MAP_SELECT = 'login', 'register', 'menu', 'settings', 'simulation', 'map_select'
 screen_state = LOGIN
@@ -68,6 +70,7 @@ def select_map(map_name):
     selected_map_name = map_name
     current_map = Map(screen, MAPS[map_name], ROOMS[map_name])
     screen_state = SIMULATION
+    item_bar.resize(screen.get_width())
 
 def go_to_settings():
     global screen_state
@@ -111,6 +114,13 @@ settings_page = SettingsPage(
     on_back=back_to_menu,
     on_toggle_fps=set_show_fps,
     on_toggle_fullscreen=set_fullscreen
+)
+
+item_bar = ItemBar(
+    screen, FONT, SMALL_FONT,
+    categories=["Lighting and Climate Control", "Appliances and convenience", "Miscellaneous"],
+    height=72,
+    on_category_change=lambda c: globals().update(selected_item_category=c)  # sets selected_item_category
 )
 
 def try_login():
@@ -170,8 +180,11 @@ while running:
         elif screen_state == MAP_SELECT:
             for btn in map_select_buttons:
                 btn.handle_event(event)
-        elif screen_state == SIMULATION and current_map:
-            current_map.handle_event(event)
+        elif screen_state == SIMULATION:
+            item_bar.handle_event(event)
+            if current_map:
+                current_map.handle_event(event)
+
 
     screen.fill((30, 30, 30))
 
@@ -218,6 +231,7 @@ while running:
         screen.blit(sim_title, (WIDTH//2 - sim_title.get_width()//2, HEIGHT//2 - 20))
         if current_map:
             current_map.draw()
+        item_bar.draw()
 
     if show_fps:
         fps_text = SMALL_FONT.render(f"FPS: {int(clock.get_fps())}", True, (0,255,0))
