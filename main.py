@@ -8,22 +8,30 @@ from screens.menu_page import MenuPage
 from screens.settings_page import SettingsPage
 from screens.maps import Map, MAPS, ROOMS
 from ui.item_bar import ItemBar
+from database.items_db import init_items_db, add_item_type_if_not_exists, get_items_by_category
 
 pygame.init()
 
 init_db()
+init_items_db()
 
 WIDTH, HEIGHT = 800, 600
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption('Home Automation Simulation')
 clock = pygame.time.Clock()
 FONT = pygame.font.SysFont(None, 36)
+# smaller font for item bar categories / items
+ITEM_SMALL_FONT = pygame.font.SysFont(None, 20)
 SMALL_FONT = pygame.font.SysFont(None, 28)
 
 show_fps = False
 fullscreen = False
 current_map = None
 selected_item_category = None
+selected_item = None
+
+# ensure map drawn below the item bar
+MAP_Y_OFFSET = 72  # same as item_bar height
 
 LOGIN, REGISTER, MENU, SETTINGS, SIMULATION, MAP_SELECT = 'login', 'register', 'menu', 'settings', 'simulation', 'map_select'
 screen_state = LOGIN
@@ -68,9 +76,52 @@ def go_to_map_select():
 def select_map(map_name):
     global selected_map_name, screen_state, current_map
     selected_map_name = map_name
-    current_map = Map(screen, MAPS[map_name], ROOMS[map_name])
+    # pass MAP_Y_OFFSET so the map and its room rects are shifted down under the item bar
+    current_map = Map(screen, MAPS[map_name], ROOMS[map_name], y_offset=MAP_Y_OFFSET)
     screen_state = SIMULATION
     item_bar.resize(screen.get_width())
+
+def add_default_items():
+    lighting = [
+        ("LED bulbs", "Lighting and Climate Control", 0.005),
+        ("Incandescent bulbs", "Lighting and Climate Control", 0.02),
+        ("Halogen", "Lighting and Climate Control", 0.018),
+        ("Manual Thermostat", "Lighting and Climate Control", 0.001),
+        ("Smart Thermostat", "Lighting and Climate Control", 0.002),
+        ("Smart plug", "Lighting and Climate Control", 0.0005),
+        ("UK plug (Type G)", "Lighting and Climate Control", 0.0),
+    ]
+    appliances = [
+        ("Manual Washing Machine", "Appliances and convenience", 0.12),
+        ("Smart Washing Machine", "Appliances and convenience", 0.10),
+        ("Conventional oven", "Appliances and convenience", 0.25),
+        ("Smart oven", "Appliances and convenience", 0.20),
+    ]
+    misc = [
+        ("Air purifier", "Miscellaneous", 0.04),
+        ("Smart Air Purifier", "Miscellaneous", 0.035),
+        ("Blinds", "Miscellaneous", 0.0),
+        ("Smart Blinds", "Miscellaneous", 0.001),
+    ]
+
+    for name, cat, epm in lighting + appliances + misc:
+        add_item_type_if_not_exists(name, cat, energy_per_min=epm, cost_per_kwh=0.2, icon_path=None)
+
+add_default_items()
+
+def on_category_change(category):
+    global selected_item_category
+    selected_item_category = category
+    items = get_items_by_category(category)
+    print(f"[DEBUG] Category changed -> {category}, loaded {len(items)} items")
+    item_bar.set_items(items)
+
+def on_item_selected(item):
+    global selected_item
+    if item:
+        selected_item = item
+        print("Item selected:", item["name"])
+        globals()["selected_item"] = item
 
 def go_to_settings():
     global screen_state
@@ -117,10 +168,11 @@ settings_page = SettingsPage(
 )
 
 item_bar = ItemBar(
-    screen, FONT, SMALL_FONT,
+    screen, FONT, ITEM_SMALL_FONT,
     categories=["Lighting and Climate Control", "Appliances and convenience", "Miscellaneous"],
-    height=72,
-    on_category_change=lambda c: globals().update(selected_item_category=c)  # sets selected_item_category
+    height=96,   # increased to fit categories + items row
+    on_category_change=on_category_change,
+    on_item_click=on_item_selected
 )
 
 def try_login():
@@ -227,11 +279,16 @@ while running:
         for btn in map_select_buttons:
             btn.draw(screen)
     elif screen_state == SIMULATION:
-        sim_title = FONT.render('Simulation Running...', True, (255,255,255))
-        screen.blit(sim_title, (WIDTH//2 - sim_title.get_width()//2, HEIGHT//2 - 20))
+        # draw map (map already shifted down under the item bar)
         if current_map:
             current_map.draw()
+        # draw item bar on top
         item_bar.draw()
+        # remove the debug text that showed the currently selected category
+        # keep selected_item display if desired:
+        if selected_item:
+            si = SMALL_FONT.render(f"Selected: {selected_item['name']}", True, (200,200,100))
+            screen.blit(si, (10, 96 + 8))
 
     if show_fps:
         fps_text = SMALL_FONT.render(f"FPS: {int(clock.get_fps())}", True, (0,255,0))
