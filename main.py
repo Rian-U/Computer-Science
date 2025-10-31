@@ -6,7 +6,8 @@ from ui.input_box import InputBox
 from ui.button import Button
 from screens.menu_page import MenuPage
 from screens.settings_page import SettingsPage
-from screens.maps import Map, MAPS, ROOMS
+from screens.maps import Map, MAPS, ROOMS, ROOM_SLOTS
+from screens.room_page import RoomPage
 from ui.item_bar import ItemBar
 from database.items_db import init_items_db, add_item_type_if_not_exists, get_items_by_category
 
@@ -33,7 +34,8 @@ selected_item = None
 # ensure map drawn below the item bar
 MAP_Y_OFFSET = 72  # same as item_bar height
 
-LOGIN, REGISTER, MENU, SETTINGS, SIMULATION, MAP_SELECT = 'login', 'register', 'menu', 'settings', 'simulation', 'map_select'
+# add new state for room view
+LOGIN, REGISTER, MENU, SETTINGS, SIMULATION, MAP_SELECT, ROOM_VIEW = 'login', 'register', 'menu', 'settings', 'simulation', 'map_select', 'room_view'
 screen_state = LOGIN
 selected_map_name = None
 
@@ -211,6 +213,12 @@ def create_map_select_buttons():
         y += 70
 create_map_select_buttons()
 
+# add helper to go back from room view
+def go_back_from_room():
+    global screen_state, current_room_page
+    current_room_page = None
+    screen_state = SIMULATION
+
 running = True
 while running:
     for event in pygame.event.get():
@@ -233,11 +241,37 @@ while running:
             for btn in map_select_buttons:
                 btn.handle_event(event)
         elif screen_state == SIMULATION:
+            # item bar should capture top clicks first
             item_bar.handle_event(event)
             if current_map:
                 current_map.handle_event(event)
+                # if the map registered a selected room (user clicked a room), open the room view
+                selected_room = current_map.get_selected_room()
+                if selected_room:
+                    # create RoomPage for this room using ROOM_SLOTS if available
+                    slots_cfg = ROOM_SLOTS.get(selected_map_name, {}).get(selected_room, [])
+                    if not slots_cfg:
+                        slots_cfg = [
+                            {"name": "Slot 1", "category": "Lighting and Climate Control"},
+                            {"name": "Slot 2", "category": "Lighting and Climate Control"},
+                        ]
+                    # create room page with on_back callback that returns to SIMULATION
+                    current_room_page = RoomPage(
+                        screen, FONT, SMALL_FONT, selected_map_name, selected_room, slots_cfg,
+                        on_back=go_back_from_room
+                    )
+                    screen_state = ROOM_VIEW
+                    # clear selected room on map so it doesn't reopen repeatedly
+                    current_map.selected_room = None
 
+        elif screen_state == ROOM_VIEW:
+            # let the room handle events first so its Back button has priority,
+            # then pass the same event to the item bar so categories/placeholders still work
+            if current_room_page:
+                current_room_page.handle_event(event)
+            item_bar.handle_event(event)
 
+    # draw
     screen.fill((30, 30, 30))
 
     if screen_state == LOGIN:
@@ -279,16 +313,21 @@ while running:
         for btn in map_select_buttons:
             btn.draw(screen)
     elif screen_state == SIMULATION:
-        # draw map (map already shifted down under the item bar)
         if current_map:
             current_map.draw()
-        # draw item bar on top
         item_bar.draw()
-        # remove the debug text that showed the currently selected category
-        # keep selected_item display if desired:
         if selected_item:
             si = SMALL_FONT.render(f"Selected: {selected_item['name']}", True, (200,200,100))
-            screen.blit(si, (10, 96 + 8))
+            screen.blit(si, (10, item_bar.rect.bottom + 8))
+    elif screen_state == ROOM_VIEW:
+        # Draw the room full-screen first (map is not shown here)
+        if current_room_page:
+            current_room_page.draw()
+        # Draw the item bar on top
+        item_bar.draw()
+        # Ensure Back button is visible above the item bar
+        if current_room_page:
+            current_room_page.back_button.draw(screen)
 
     if show_fps:
         fps_text = SMALL_FONT.render(f"FPS: {int(clock.get_fps())}", True, (0,255,0))

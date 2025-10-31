@@ -33,6 +33,92 @@ ROOMS = {
     }
 }
 
+# Add per-room slot configuration: for each map -> room -> list of slot dicts (name + allowed category).
+ROOM_SLOTS = {
+    "Map 1": {
+        "bedroom": [
+            {"name": "Ceiling Light", "category": "Lighting and Climate Control"},
+            {"name": "Thermostat", "category": "Lighting and Climate Control"},
+            {"name": "Side Plug", "category": "Lighting and Climate Control"},
+        ],
+        "bedroom2": [
+            {"name": "Ceiling Light", "category": "Lighting and Climate Control"},
+            {"name": "Blinds", "category": "Miscellaneous"},
+        ],
+        "bathroom": [
+            {"name": "Vanity Light", "category": "Lighting and Climate Control"},
+            {"name": "Plug", "category": "Lighting and Climate Control"},
+        ],
+        "office": [
+            {"name": "Desk Light", "category": "Lighting and Climate Control"},
+            {"name": "Smart Plug", "category": "Lighting and Climate Control"},
+            {"name": "Air Purifier Slot", "category": "Miscellaneous"},
+        ],
+        "living_room": [
+            {"name": "Main Light", "category": "Lighting and Climate Control"},
+            {"name": "TV Plug", "category": "Appliances and convenience"},
+            {"name": "Blinds", "category": "Miscellaneous"},
+        ],
+        "kitchen": [
+            {"name": "Ceiling Light", "category": "Lighting and Climate Control"},
+            {"name": "Oven Slot", "category": "Appliances and convenience"},
+            {"name": "Washing Machine Slot", "category": "Appliances and convenience"},
+        ],
+    },
+    "Map 2": {
+        # add reasonable defaults for Map 2 rooms
+        "bedroom": [
+            {"name": "Light", "category": "Lighting and Climate Control"},
+            {"name": "Blinds", "category": "Miscellaneous"},
+        ],
+        "bathroom": [
+            {"name": "Light", "category": "Lighting and Climate Control"}
+        ],
+        "office": [
+            {"name": "Desk Plug", "category": "Lighting and Climate Control"},
+            {"name": "Air Purifier Slot", "category": "Miscellaneous"},
+        ],
+        "living_room": [
+            {"name": "Main Light", "category": "Lighting and Climate Control"},
+            {"name": "Oven Slot", "category": "Appliances and convenience"},
+        ],
+        "dining": [
+            {"name": "Light", "category": "Lighting and Climate Control"},
+            {"name": "Blinds", "category": "Miscellaneous"},
+        ],
+        "kitchen": [
+            {"name": "Main Light", "category": "Lighting and Climate Control"},
+            {"name": "Oven Slot", "category": "Appliances and convenience"},
+        ],
+    },
+    "Map 3": {
+        # defaults for Map 3
+        "bedroom": [
+            {"name": "Light", "category": "Lighting and Climate Control"},
+            {"name": "Thermostat", "category": "Lighting and Climate Control"},
+        ],
+        "bathroom": [
+            {"name": "Light", "category": "Lighting and Climate Control"}
+        ],
+        "office": [
+            {"name": "Desk Light", "category": "Lighting and Climate Control"},
+            {"name": "Smart Plug", "category": "Lighting and Climate Control"},
+        ],
+        "living_room": [
+            {"name": "Main Light", "category": "Lighting and Climate Control"},
+            {"name": "Blinds", "category": "Miscellaneous"},
+            {"name": "TV Plug", "category": "Appliances and convenience"},
+        ],
+        "dining": [
+            {"name": "Light", "category": "Lighting and Climate Control"}
+        ],
+        "kitchen": [
+            {"name": "Main Light", "category": "Lighting and Climate Control"},
+            {"name": "Oven Slot", "category": "Appliances and convenience"},
+        ],
+    }
+}
+
 class Map:
     def __init__(self, screen, bg_path, rooms, y_offset=100):
         """
