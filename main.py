@@ -31,6 +31,11 @@ current_map = None
 selected_item_category = None
 selected_item = None
 
+# Drag-and-drop state (initialize so module-level code can reference them)
+dragging_item = None
+dragging_surf = None
+dragging_offset = (0, 0)
+
 # ensure map drawn below the item bar
 MAP_Y_OFFSET = 72  # same as item_bar height
 
@@ -265,11 +270,51 @@ while running:
                     current_map.selected_room = None
 
         elif screen_state == ROOM_VIEW:
-            # let the room handle events first so its Back button has priority,
-            # then pass the same event to the item bar so categories/placeholders still work
+            # Priority: allow RoomPage to handle its own clicks first (back, show remove button)
             if current_room_page:
                 current_room_page.handle_event(event)
+
+            # Start drag: only allow starting a drag from the item bar while inside a room
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                # check if mouse down was on an item in the item bar
+                itm, itm_rect = item_bar.get_item_at_pos(event.pos)
+                if itm:
+                    # begin dragging this item
+                    dragging_item = itm
+                    dragging_surf = item_bar.create_item_surface(itm, item_bar.placeholder_size)
+                    # record offset so cursor can appear where clicked
+                    dragging_offset = (event.pos[0] - itm_rect.x, event.pos[1] - itm_rect.y)
+                    # do not let item_bar.handle_event process this click (we already started drag)
+                    # skip further per-event handling
+                    continue
+
+            # Drag motion: track mouse while button held
+            if event.type == pygame.MOUSEMOTION and dragging_item:
+                # nothing special to do here; main loop will draw dragging_surf at mouse pos
+                pass
+
+            # Drop / end drag
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and dragging_item:
+                # check if released over a slot in the current room
+                idx, slot, slot_rect = current_room_page.get_slot_at_pos(event.pos)
+                if idx is not None:
+                    # enforce category match
+                    if dragging_item.get("category") == slot.get("category"):
+                        current_room_page.place_item(idx, dragging_item)
+                        print(f"Placed '{dragging_item.get('name')}' into slot '{slot.get('name')}'")
+                    else:
+                        print(f"Cannot place '{dragging_item.get('name')}' into slot '{slot.get('name')}' (requires {slot.get('category')})")
+                # clear dragging state
+                dragging_item = None
+                dragging_surf = None
+                dragging_offset = (0,0)
+
+            # pass event to item bar so categories still work in ROOM_VIEW
             item_bar.handle_event(event)
+
+            # after item_bar handled the event, also forward remove-button events if any
+            if current_room_page:
+                current_room_page.handle_remove_event(event)
 
     # draw
     screen.fill((30, 30, 30))
@@ -320,14 +365,25 @@ while running:
             si = SMALL_FONT.render(f"Selected: {selected_item['name']}", True, (200,200,100))
             screen.blit(si, (10, item_bar.rect.bottom + 8))
     elif screen_state == ROOM_VIEW:
-        # Draw the room full-screen first (map is not shown here)
+        # Draw room (full-screen)
         if current_room_page:
             current_room_page.draw()
         # Draw the item bar on top
         item_bar.draw()
+        # Draw remove button (if visible) on top of the item bar
+        if current_room_page:
+            current_room_page.draw_remove_button(screen)
         # Ensure Back button is visible above the item bar
         if current_room_page:
             current_room_page.back_button.draw(screen)
+
+        # Draw dragging preview on top if any
+        if dragging_item and dragging_surf:
+            mx, my = pygame.mouse.get_pos()
+            # position so mouse is at same offset relative to original placeholder
+            draw_x = mx - dragging_offset[0]
+            draw_y = my - dragging_offset[1]
+            screen.blit(dragging_surf, (draw_x, draw_y))
 
     if show_fps:
         fps_text = SMALL_FONT.render(f"FPS: {int(clock.get_fps())}", True, (0,255,0))
