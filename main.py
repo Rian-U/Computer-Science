@@ -418,12 +418,19 @@ def go_back_from_room():
 
 # Start-Day button (shown in SIMULATION when day hasn't started)
 start_day_button = None
+menu_button = None
+
 def make_start_day_button():
-    global start_day_button
+    global start_day_button, menu_button
     btn_w, btn_h = 200, 44
     btn_x = WIDTH - btn_w - 16
     btn_y = item_bar.rect.bottom + 12
     start_day_button = Button(btn_x, btn_y, btn_w, btn_h, "Start Day", on_start_day, font=FONT)
+    # place Main Menu button to the left of Start Day
+    mb_w, mb_h = 140, 36
+    mb_x = btn_x - mb_w - 8
+    mb_y = btn_y + (btn_h - mb_h)//2
+    menu_button = Button(mb_x, mb_y, mb_w, mb_h, "Main Menu", lambda: return_to_menu(), font=SMALL_FONT)
 
 def on_start_day():
     global day_started
@@ -431,7 +438,26 @@ def on_start_day():
     start_new_day()
     day_started = True
 
-# create initial start button object so it can be drawn/clicked (will be positioned at runtime)
+def return_to_menu():
+    global day_started, simulation_running, screen_state, current_map, current_room_page, current_room_name
+    global daily_energy_kwh, daily_cost, day_elapsed_seconds, continue_button
+    # stop any running day and clear room view
+    day_started = False
+    simulation_running = False
+    current_room_page = None
+    current_room_name = None
+
+    # reset today's accumulators so when user returns to simulation they start fresh
+    daily_energy_kwh = 0.0
+    daily_cost = 0.0
+    day_elapsed_seconds = 0.0
+
+    # clear any summary/continue button state
+    continue_button = None
+
+    # go back to main menu
+    go_to_menu()
+# create initial start + menu button objects
 make_start_day_button()
 
 # day will start when user presses Start Day (on_start_day)
@@ -474,6 +500,9 @@ while running:
             # Start Day button active until day_started becomes True
             if start_day_button and not day_started:
                 start_day_button.handle_event(event)
+            # Main Menu button always active in SIMULATION
+            if menu_button:
+                menu_button.handle_event(event)
 
             # handle remote map toggles first (consume clicks so they don't select rooms)
             if current_map and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -676,7 +705,9 @@ while running:
                 txt = SMALL_FONT.render(b["label"], True, (255,255,255))
                 screen.blit(txt, (rect.centerx - txt.get_width()//2, rect.centery - txt.get_height()//2))
         item_bar.draw()
-        # draw Start Day button when the day hasn't been started yet
+        # draw Main Menu button and Start Day button when visible
+        if menu_button:
+            menu_button.draw(screen)
         if start_day_button and not day_started:
             start_day_button.draw(screen)
         # show small running timer and meter (meter now shows current day's total)
