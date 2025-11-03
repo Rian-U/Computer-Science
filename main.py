@@ -45,6 +45,34 @@ current_room_name = None
 
 # placements: placements[map_name][room_name] = [ item_dict_or_None, ... ] (slot-aligned)
 placements = {}
+# per-slot on/off state mirror: placements_on[map][room] = [ bool_or_False, ... ]
+placements_on = {}
+
+# ensure map drawn below the item bar
+MAP_Y_OFFSET = 120  # moved lower so item bar/categories don't overlap map
+
+# Add day_started flag so day only begins when user presses Start
+day_started = False
+
+# Smart items that support remote toggle from the map
+SMART_REMOTE = {
+    "LED bulbs",
+    "Smart Thermostat",
+    "Smart plug",
+    "Smart Washing-Machine",
+    "Smart oven",
+    "Smart Air-Purifier",
+    "Smart Blinds",
+}
+
+# current room page and name
+current_room_page = None
+current_room_name = None
+
+# placements: placements[map_name][room_name] = [ item_dict_or_None, ... ] (slot-aligned)
+placements = {}
+# per-slot on/off state mirror: placements_on[map][room] = [ bool_or_False, ... ]
+placements_on = {}
 
 # ensure map drawn below the item bar
 MAP_Y_OFFSET = 120  # moved lower so item bar/categories don't overlap map
@@ -56,13 +84,27 @@ LOGIN, REGISTER, MENU, SETTINGS, SIMULATION, MAP_SELECT, ROOM_VIEW, DAY_SUMMARY 
 screen_state = LOGIN
 selected_map_name = None
 
+# Add day_started flag so day only begins when user presses Start
+day_started = False
+
+# Smart items that support remote toggle from the map
+SMART_REMOTE = {
+    "LED bulbs",
+    "Smart Thermostat",
+    "Smart plug",
+    "Smart Washing-Machine",
+    "Smart oven",
+    "Smart Air-Purifier",
+    "Smart Blinds",
+}
+
 # Time / energy system
 # current day runs for 30 seconds
 day_duration_seconds = 30
 day_elapsed_seconds = 0.0
 minutes_per_second = 1440.0 / float(day_duration_seconds)  # computed as 1440 / day_duration_seconds
 
-simulation_running = True  # simulation running flag (pauses when day ends)
+simulation_running = False  # simulation runs only after user presses Start Day
 # meter per-day is represented by daily_energy_kwh (reset each day)
 daily_energy_kwh = 0.0
 daily_cost = 0.0
@@ -229,19 +271,66 @@ on_category_change(item_bar.get_selected_category())
 
 # Helper: ensure placements dict has structure for a map & room and return list of items (None for empty)
 def ensure_room_placements(map_name, room_name, slots_cfg):
+    """Ensure placements and placements_on exist for the room and match slots_cfg length."""
     if map_name not in placements:
         placements[map_name] = {}
     if room_name not in placements[map_name]:
-        # initialize with None entries matching number of slots
         placements[map_name][room_name] = [None] * len(slots_cfg)
+    if map_name not in placements_on:
+        placements_on[map_name] = {}
+    if room_name not in placements_on[map_name]:
+        placements_on[map_name][room_name] = [False] * len(slots_cfg)
+    # If slots_cfg length changed, resize lists (safe)
+    cur = placements[map_name][room_name]
+    if len(cur) != len(slots_cfg):
+        placements[map_name][room_name] = (cur + [None] * len(slots_cfg))[:len(slots_cfg)]
+    cur_on = placements_on[map_name][room_name]
+    if len(cur_on) != len(slots_cfg):
+        placements_on[map_name][room_name] = (cur_on + [False] * len(slots_cfg))[:len(slots_cfg)]
     return placements[map_name][room_name]
 
-def get_all_placed_items():
-    """Return iterator of all placed item dicts (skip None)."""
-    for m in placements.values():
-        for room_list in m.values():
-            for itm in room_list:
-                if itm:
+def compute_remote_buttons(map_obj, map_name):
+    """Compute labeled toggle buttons for smart items placed in rooms.
+       Returns list of dicts: {rect,label,map,room,slot,on}"""
+    buttons = []
+    if not map_obj or map_name not in placements:
+        return buttons
+    for room_name, room_rect in map_obj.rooms.items():
+        room_list = placements.get(map_name, {}).get(room_name, [])
+        room_on = placements_on.get(map_name, {}).get(room_name, [])
+        # collect smart item slots (preserve order)
+        smart_slots = [i for i, itm in enumerate(room_list) if itm and itm.get("name") in SMART_REMOTE]
+        for idx_stack, slot_index in enumerate(smart_slots):
+            itm = room_list[slot_index]
+            label = itm.get("name", "")
+            # render width using SMALL_FONT (approx)
+            txt_surf = SMALL_FONT.render(label, True, (255,255,255))
+            btn_w = min(240, max(60, txt_surf.get_width() + 16))
+            btn_h = max(22, txt_surf.get_height() + 8)
+            # position above room_rect, stacked upward so they do not overlap the room area
+            x = room_rect.centerx - btn_w // 2
+            y = room_rect.top - btn_h - 8 - idx_stack * (btn_h + 6)
+            btn_rect = pygame.Rect(int(x), int(y), int(btn_w), int(btn_h))
+            on_state = False
+            if slot_index < len(room_on):
+                on_state = bool(room_on[slot_index])
+            buttons.append({
+                "rect": btn_rect,
+                "label": label,
+                "map": map_name,
+                "room": room_name,
+                "slot": slot_index,
+                "on": on_state
+            })
+    return buttons
+
+def iter_active_placed_items():
+    """Yield placed items that are ON (considering placements_on)."""
+    for map_name, rooms in placements.items():
+        for room_name, items in rooms.items():
+            ons = placements_on.get(map_name, {}).get(room_name, [False]*len(items))
+            for idx, itm in enumerate(items):
+                if itm and idx < len(ons) and ons[idx]:
                     yield itm
 
 # Login / register UI (kept from previous)
@@ -273,11 +362,16 @@ def go_to_map_select():
     screen_state = MAP_SELECT
 
 def select_map(map_name):
-    global selected_map_name, screen_state, current_map
+    global selected_map_name, screen_state, current_map, day_started
     selected_map_name = map_name
     current_map = Map(screen, MAPS[map_name], ROOMS[map_name], y_offset=MAP_Y_OFFSET)
     screen_state = SIMULATION
     item_bar.resize(screen.get_width())
+    # do not start the day automatically — let user place items first
+    day_started = False
+    # ensure placements exist for all rooms listed in ROOM_SLOTS for this map
+    for rn, slots in ROOM_SLOTS.get(map_name, {}).items():
+        ensure_room_placements(map_name, rn, slots)
 
 def try_login():
     global screen_state, login_error
@@ -322,8 +416,26 @@ def go_back_from_room():
     current_room_name = None
     screen_state = SIMULATION
 
-# start first day
-start_new_day()
+# Start-Day button (shown in SIMULATION when day hasn't started)
+start_day_button = None
+def make_start_day_button():
+    global start_day_button
+    btn_w, btn_h = 200, 44
+    btn_x = WIDTH - btn_w - 16
+    btn_y = item_bar.rect.bottom + 12
+    start_day_button = Button(btn_x, btn_y, btn_w, btn_h, "Start Day", on_start_day, font=FONT)
+
+def on_start_day():
+    global day_started
+    # start new day; this resets timers as usual
+    start_new_day()
+    day_started = True
+
+# create initial start button object so it can be drawn/clicked (will be positioned at runtime)
+make_start_day_button()
+
+# day will start when user presses Start Day (on_start_day)
+# (no automatic start here)
 
 # main loop
 running = True
@@ -359,6 +471,30 @@ while running:
         elif screen_state == SIMULATION:
             # item bar should capture top clicks first
             item_bar.handle_event(event)
+            # Start Day button active until day_started becomes True
+            if start_day_button and not day_started:
+                start_day_button.handle_event(event)
+
+            # handle remote map toggles first (consume clicks so they don't select rooms)
+            if current_map and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                remote_buttons = compute_remote_buttons(current_map, selected_map_name)
+                handled = False
+                for b in remote_buttons:
+                    if b["rect"].collidepoint(event.pos):
+                        # ensure structure exists
+                        ensure_room_placements(b["map"], b["room"], ROOM_SLOTS.get(b["map"], {}).get(b["room"], []))
+                        placements_on[b["map"]][b["room"]][b["slot"]] = not placements_on[b["map"]][b["room"]][b["slot"]]
+                        # sync to RoomPage if currently viewing same room
+                        if current_room_page and current_room_name == b["room"]:
+                            if 0 <= b["slot"] < len(current_room_page.slots):
+                                current_room_page.slots[b["slot"]]["on"] = placements_on[b["map"]][b["room"]][b["slot"]]
+                        print(f"[MAP] remote toggle {b['label']} in {b['room']} -> {placements_on[b['map']][b['room']][b['slot']]}")
+                        handled = True
+                        break
+                if handled:
+                    # consumed the click — don't pass to map selection
+                    continue
+
             if current_map:
                 current_map.handle_event(event)
 
@@ -384,6 +520,8 @@ while running:
                         # populate RoomPage.slots with previously placed items (if any)
                         for i in range(min(len(room_place_list), len(current_room_page.slots))):
                             current_room_page.slots[i]["item"] = room_place_list[i]
+                            # get on/off from placements_on if present
+                            current_room_page.slots[i]["on"] = placements_on.get(selected_map_name, {}).get(selected_room, [False]*len(current_room_page.slots))[i]
                         screen_state = ROOM_VIEW
                         current_map.selected_room = None
                     except Exception:
@@ -393,7 +531,7 @@ while running:
                         current_map.selected_room = None
 
         elif screen_state == ROOM_VIEW:
-            # RoomPage handles clicks first so Back button gets priority
+            # RoomPage handles clicks first
             if current_room_page:
                 current_room_page.handle_event(event)
 
@@ -419,9 +557,11 @@ while running:
                         # enforce category match
                         if dragging_item.get("category") == slot.get("category"):
                             current_room_page.place_item(idx, dragging_item)
-                            # update persistent placements for this room
+                            # ensure structures exist
                             ensure_room_placements(selected_map_name, current_room_name, ROOM_SLOTS.get(selected_map_name, {}).get(current_room_name, []))
+                            # save placed item and default to ON
                             placements[selected_map_name][current_room_name][idx] = dragging_item
+                            placements_on[selected_map_name][current_room_name][idx] = True
                             print(f"Placed '{dragging_item.get('name')}' into slot '{slot.get('name')}'")
                         else:
                             print(f"Cannot place '{dragging_item.get('name')}' into slot '{slot.get('name')}' (requires {slot.get('category')})")
@@ -441,40 +581,41 @@ while running:
                     slots_cfg = ROOM_SLOTS.get(selected_map_name, {}).get(current_room_name, [])
                     ensure_room_placements(selected_map_name, current_room_name, slots_cfg)
                     placements[selected_map_name][current_room_name] = [s["item"] for s in current_room_page.slots]
-
+                    placements_on[selected_map_name][current_room_name] = [bool(s.get("on", False)) for s in current_room_page.slots]
         elif screen_state == DAY_SUMMARY:
             # day summary UI: only continue button active
             if continue_button:
                 continue_button.handle_event(event)
 
     # --- time / simulation updates ---
-    if screen_state == SIMULATION and simulation_running:
-        # accumulate simulated minutes for this frame
-        if day_duration_seconds and minutes_per_second:
-            delta_minutes = dt * minutes_per_second
-            # sum energy for all placed items across all maps/rooms
-            frame_energy = 0.0
-            frame_cost = 0.0
-            for itm in get_all_placed_items():
-                try:
-                    epm = float(itm.get("energy_per_min", 0.0))
-                    costk = float(itm.get("cost_per_kwh", 0.0))
-                except Exception:
-                    epm = 0.0
-                    costk = 0.0
-                e_kwh = epm * delta_minutes
-                c = e_kwh * costk
-                frame_energy += e_kwh
-                frame_cost += c
-            # accumulate per-day totals (meter shows per-day)
-            daily_energy_kwh += frame_energy
-            daily_cost += frame_cost
+    # only advance simulated time after the user pressed Start Day
+    if screen_state == SIMULATION and day_started and simulation_running:
+         # accumulate simulated minutes for this frame
+         if day_duration_seconds and minutes_per_second:
+             delta_minutes = dt * minutes_per_second
+             # sum energy for all ON placed items across all maps/rooms
+             frame_energy = 0.0
+             frame_cost = 0.0
+             for itm in iter_active_placed_items():
+                 try:
+                     epm = float(itm.get("energy_per_min", 0.0))
+                     costk = float(itm.get("cost_per_kwh", 0.0))
+                 except Exception:
+                     epm = 0.0
+                     costk = 0.0
+                 e_kwh = epm * delta_minutes
+                 c = e_kwh * costk
+                 frame_energy += e_kwh
+                 frame_cost += c
+             # accumulate per-day totals (meter shows per-day)
+             daily_energy_kwh += frame_energy
+             daily_cost += frame_cost
 
-            day_elapsed_seconds += dt
-            # if day finished, pause and show summary
-            if day_elapsed_seconds >= day_duration_seconds:
-                # prepare day summary values (we keep daily_energy_kwh/daily_cost)
-                end_current_day()
+             day_elapsed_seconds += dt
+             # if day finished, pause and show summary
+             if day_elapsed_seconds >= day_duration_seconds:
+                 # prepare day summary values (we keep daily_energy_kwh/daily_cost)
+                 end_current_day()
 
     # draw
     screen.fill((30, 30, 30))
@@ -525,7 +666,19 @@ while running:
     elif screen_state == SIMULATION:
         if current_map:
             current_map.draw()
+            # draw labeled remote toggles for smart items (above rooms)
+            remote_buttons = compute_remote_buttons(current_map, selected_map_name)
+            for b in remote_buttons:
+                rect = b["rect"]
+                color = (0,200,0) if b["on"] else (200,0,0)
+                pygame.draw.rect(screen, color, rect, border_radius=6)
+                pygame.draw.rect(screen, (30,30,30), rect, 2, border_radius=6)
+                txt = SMALL_FONT.render(b["label"], True, (255,255,255))
+                screen.blit(txt, (rect.centerx - txt.get_width()//2, rect.centery - txt.get_height()//2))
         item_bar.draw()
+        # draw Start Day button when the day hasn't been started yet
+        if start_day_button and not day_started:
+            start_day_button.draw(screen)
         # show small running timer and meter (meter now shows current day's total)
         timer_text = SMALL_FONT.render(f"Day time: {int(day_elapsed_seconds)}s / {int(day_duration_seconds) if day_duration_seconds else 0}s", True, (200,200,200))
         screen.blit(timer_text, (10, item_bar.rect.bottom + 32))
