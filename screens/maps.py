@@ -33,86 +33,116 @@ ROOMS = {
     }
 }
 
-# per-room slot configuration (categories normalized to code/DB)
+# per-room slot configuration (normalized category names)
+# Rules applied:
+# - Bedrooms: ElectricsAndThermo (lighting), ElectricsAndThermo (plug), Miscellaneous
+# - Offices: ElectricsAndThermo (lighting), ElectricsAndThermo (plug), ElectricsAndThermo (desklight), Miscellaneous
+# - Living rooms: ElectricsAndThermo (lighting), ElectricsAndThermo (plug), ElectricsAndThermo (thermostat), Miscellaneous
+# - Bathrooms: ElectricsAndThermo (lighting), Miscellaneous, Appliances
+# - Dining: ElectricsAndThermo (lighting), Miscellaneous
+# - Kitchens: ElectricsAndThermo (lighting), ElectricsAndThermo (plug), Appliances, Miscellaneous
 ROOM_SLOTS = {
     "Map 1": {
         "bedroom": [
             {"name": "Ceiling Light", "category": "ElectricsAndThermo"},
-            {"name": "Thermostat", "category": "ElectricsAndThermo"},
             {"name": "Side Plug", "category": "ElectricsAndThermo"},
+            {"name": "Misc Slot", "category": "Miscellaneous"},
         ],
         "bedroom2": [
             {"name": "Ceiling Light", "category": "ElectricsAndThermo"},
-            {"name": "Blinds", "category": "Miscellaneous"},
+            {"name": "Side Plug", "category": "ElectricsAndThermo"},
+            {"name": "Misc Slot", "category": "Miscellaneous"},
         ],
         "bathroom": [
             {"name": "Vanity Light", "category": "ElectricsAndThermo"},
-            {"name": "Plug", "category": "ElectricsAndThermo"},
+            {"name": "Misc Slot", "category": "Miscellaneous"},
+            {"name": "Appliance Slot", "category": "Appliances"},
         ],
         "office": [
             {"name": "Desk Light", "category": "ElectricsAndThermo"},
-            {"name": "Smart Plug", "category": "ElectricsAndThermo"},
-            {"name": "Air Purifier Slot", "category": "Miscellaneous"},
+            {"name": "Desk Plug", "category": "ElectricsAndThermo"},
+            {"name": "Desk Lamp", "category": "ElectricsAndThermo"},
+            {"name": "Misc Slot", "category": "Miscellaneous"},
         ],
         "living_room": [
             {"name": "Main Light", "category": "ElectricsAndThermo"},
-            {"name": "TV Plug", "category": "Appliances"},
-            {"name": "Blinds", "category": "Miscellaneous"},
+            {"name": "TV Plug", "category": "ElectricsAndThermo"},
+            {"name": "Thermostat", "category": "ElectricsAndThermo"},
+            {"name": "Misc Slot", "category": "Miscellaneous"},
         ],
         "kitchen": [
             {"name": "Ceiling Light", "category": "ElectricsAndThermo"},
-            {"name": "Oven Slot", "category": "Appliances"},
-            {"name": "Washing Machine Slot", "category": "Appliances"},
+            {"name": "Counter Plug", "category": "ElectricsAndThermo"},
+            {"name": "Appliance Slot", "category": "Appliances"},
+            {"name": "Misc Slot", "category": "Miscellaneous"},
         ],
     },
     "Map 2": {
         "bedroom": [
-            {"name": "Light", "category": "ElectricsAndThermo"},
-            {"name": "Blinds", "category": "Miscellaneous"},
+            {"name": "Ceiling Light", "category": "ElectricsAndThermo"},
+            {"name": "Side Plug", "category": "ElectricsAndThermo"},
+            {"name": "Misc Slot", "category": "Miscellaneous"},
         ],
         "bathroom": [
-            {"name": "Light", "category": "ElectricsAndThermo"}
+            {"name": "Vanity Light", "category": "ElectricsAndThermo"},
+            {"name": "Misc Slot", "category": "Miscellaneous"},
+            {"name": "Appliance Slot", "category": "Appliances"},
         ],
         "office": [
+            {"name": "Desk Light", "category": "ElectricsAndThermo"},
             {"name": "Desk Plug", "category": "ElectricsAndThermo"},
-            {"name": "Air Purifier Slot", "category": "Miscellaneous"},
+            {"name": "Desk Lamp", "category": "ElectricsAndThermo"},
+            {"name": "Misc Slot", "category": "Miscellaneous"},
         ],
         "living_room": [
             {"name": "Main Light", "category": "ElectricsAndThermo"},
-            {"name": "Oven Slot", "category": "Appliances"},
+            {"name": " TV Plug", "category": "ElectricsAndThermo"},
+            {"name": "Thermostat", "category": "ElectricsAndThermo"},
+            {"name": "Misc Slot", "category": "Miscellaneous"},
         ],
         "dining": [
-            {"name": "Light", "category": "ElectricsAndThermo"},
-            {"name": "Blinds", "category": "Miscellaneous"},
+            {"name": "Main Light", "category": "ElectricsAndThermo"},
+            {"name": "Misc Slot", "category": "Miscellaneous"},
         ],
         "kitchen": [
             {"name": "Main Light", "category": "ElectricsAndThermo"},
-            {"name": "Oven Slot", "category": "Appliances"},
+            {"name": "Counter Plug", "category": "ElectricsAndThermo"},
+            {"name": "Appliance Slot", "category": "Appliances"},
+            {"name": "Misc Slot", "category": "Miscellaneous"},
         ],
     },
     "Map 3": {
         "bedroom": [
-            {"name": "Light", "category": "ElectricsAndThermo"},
-            {"name": "Thermostat", "category": "ElectricsAndThermo"},
+            {"name": "Ceiling Light", "category": "ElectricsAndThermo"},
+            {"name": "Side Plug", "category": "ElectricsAndThermo"},
+            {"name": "Misc Slot", "category": "Miscellaneous"},
         ],
         "bathroom": [
-            {"name": "Light", "category": "ElectricsAndThermo"}
+            {"name": "Vanity Light", "category": "ElectricsAndThermo"},
+            {"name": "Misc Slot", "category": "Miscellaneous"},
+            {"name": "Appliance Slot", "category": "Appliances"},
         ],
         "office": [
             {"name": "Desk Light", "category": "ElectricsAndThermo"},
-            {"name": "Smart Plug", "category": "ElectricsAndThermo"},
+            {"name": "Desk Plug", "category": "ElectricsAndThermo"},
+            {"name": "Desk Lamp", "category": "ElectricsAndThermo"},
+            {"name": "Misc Slot", "category": "Miscellaneous"},
         ],
         "living_room": [
             {"name": "Main Light", "category": "ElectricsAndThermo"},
-            {"name": "Blinds", "category": "Miscellaneous"},
-            {"name": "TV Plug", "category": "Appliances"},
+            {"name": "TV Plug", "category": "ElectricsAndThermo"},
+            {"name": "Thermostat", "category": "ElectricsAndThermo"},
+            {"name": "Misc Slot", "category": "Miscellaneous"},
         ],
         "dining": [
-            {"name": "Light", "category": "ElectricsAndThermo"}
+            {"name": "Main Light", "category": "ElectricsAndThermo"},
+            {"name": "Misc Slot", "category": "Miscellaneous"},
         ],
         "kitchen": [
             {"name": "Main Light", "category": "ElectricsAndThermo"},
-            {"name": "Oven Slot", "category": "Appliances"},
+            {"name": "Counter Plug", "category": "ElectricsAndThermo"},
+            {"name": "Appliance Slot", "category": "Appliances"},
+            {"name": "Misc Slot", "category": "Miscellaneous"},
         ],
     }
 }
