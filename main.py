@@ -127,23 +127,23 @@ def add_default_items():
     # Oven ~2.5 kW -> 2.5/60 = 0.04167 kWh/min
     # Air purifier ~50W -> 0.05/60 = 0.000833 kWh/min
     lighting = [
-        ("LED bulbs", "Lighting and Climate Control", 0.01/60),
-        ("Incandescent bulbs", "Lighting and Climate Control", 0.06/60),
-        ("Halogen", "Lighting and Climate Control", 0.05/60),
-        ("Manual Thermostat", "Lighting and Climate Control", 0.001/60),
-        ("Smart Thermostat", "Lighting and Climate Control", 0.002/60),
-        ("Smart plug", "Lighting and Climate Control", 0.002/60),
-        ("UK plug (Type G)", "Lighting and Climate Control", 0.0),
+        ("LED bulbs", "ElectricsAndThermo", 0.01/60),
+        ("Incandescent bulbs", "ElectricsAndThermo", 0.06/60),
+        ("Halogen", "ElectricsAndThermo", 0.05/60),
+        ("Manual Thermostat", "ElectricsAndThermo", 0.001/60),
+        ("Smart Thermostat", "ElectricsAndThermo", 0.002/60),
+        ("Smart plug", "ElectricsAndThermo", 0.002/60),
+        ("UK plug (Type G)", "ElectricsAndThermo", 0.0),
     ]
     appliances = [
-        ("Manual Washing Machine", "Appliances and convenience", 0.5/60),
-        ("Smart Washing Machine", "Appliances and convenience", 0.5/60),
-        ("Conventional oven", "Appliances and convenience", 2.5/60),
-        ("Smart oven", "Appliances and convenience", 2.0/60),
+        ("Manual Washing-Machine", "Appliances", 0.5/60),
+        ("Smart Washing-Machine", "Appliances", 0.5/60),
+        ("Conventional oven", "Appliances", 2.5/60),
+        ("Smart oven", "Appliances", 2.0/60),
     ]
     misc = [
         ("Air purifier", "Miscellaneous", 0.05/60),
-        ("Smart Air Purifier", "Miscellaneous", 0.035/60),
+        ("Smart Air-Purifier", "Miscellaneous", 0.035/60),
         ("Blinds", "Miscellaneous", 0.0),
         ("Smart Blinds", "Miscellaneous", 0.001/60),
     ]
@@ -216,11 +216,14 @@ settings_page = SettingsPage(
 
 item_bar = ItemBar(
     screen, FONT, ITEM_SMALL_FONT,
-    categories=["Lighting and Climate Control", "Appliances and convenience", "Miscellaneous"],
-    height=96,   # increased to fit categories + items row
+    categories=["ElectricsAndThermo", "Appliances", "Miscellaneous"],
+    height=96,
     on_category_change=on_category_change,
     on_item_click=on_item_selected
 )
+
+# Populate initial category items immediately
+on_category_change(item_bar.get_selected_category())
 
 # continue_button created dynamically when a day ends (see end_current_day)
 
@@ -365,8 +368,8 @@ while running:
                     slots_cfg = ROOM_SLOTS.get(selected_map_name, {}).get(selected_room, [])
                     if not slots_cfg:
                         slots_cfg = [
-                            {"name": "Slot 1", "category": "Lighting and Climate Control"},
-                            {"name": "Slot 2", "category": "Lighting and Climate Control"},
+                            {"name": "Slot 1", "category": "ElectricsAndThermo"},
+                            {"name": "Slot 2", "category": "ElectricsAndThermo"},
                         ]
                     try:
                         # ensure placements exist for this room

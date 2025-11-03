@@ -33,109 +33,99 @@ ROOMS = {
     }
 }
 
-# Add per-room slot configuration: for each map -> room -> list of slot dicts (name + allowed category).
+# per-room slot configuration (categories normalized to code/DB)
 ROOM_SLOTS = {
     "Map 1": {
         "bedroom": [
-            {"name": "Ceiling Light", "category": "Lighting and Climate Control"},
-            {"name": "Thermostat", "category": "Lighting and Climate Control"},
-            {"name": "Side Plug", "category": "Lighting and Climate Control"},
+            {"name": "Ceiling Light", "category": "ElectricsAndThermo"},
+            {"name": "Thermostat", "category": "ElectricsAndThermo"},
+            {"name": "Side Plug", "category": "ElectricsAndThermo"},
         ],
         "bedroom2": [
-            {"name": "Ceiling Light", "category": "Lighting and Climate Control"},
+            {"name": "Ceiling Light", "category": "ElectricsAndThermo"},
             {"name": "Blinds", "category": "Miscellaneous"},
         ],
         "bathroom": [
-            {"name": "Vanity Light", "category": "Lighting and Climate Control"},
-            {"name": "Plug", "category": "Lighting and Climate Control"},
+            {"name": "Vanity Light", "category": "ElectricsAndThermo"},
+            {"name": "Plug", "category": "ElectricsAndThermo"},
         ],
         "office": [
-            {"name": "Desk Light", "category": "Lighting and Climate Control"},
-            {"name": "Smart Plug", "category": "Lighting and Climate Control"},
+            {"name": "Desk Light", "category": "ElectricsAndThermo"},
+            {"name": "Smart Plug", "category": "ElectricsAndThermo"},
             {"name": "Air Purifier Slot", "category": "Miscellaneous"},
         ],
         "living_room": [
-            {"name": "Main Light", "category": "Lighting and Climate Control"},
-            {"name": "TV Plug", "category": "Appliances and convenience"},
+            {"name": "Main Light", "category": "ElectricsAndThermo"},
+            {"name": "TV Plug", "category": "Appliances"},
             {"name": "Blinds", "category": "Miscellaneous"},
         ],
         "kitchen": [
-            {"name": "Ceiling Light", "category": "Lighting and Climate Control"},
-            {"name": "Oven Slot", "category": "Appliances and convenience"},
-            {"name": "Washing Machine Slot", "category": "Appliances and convenience"},
+            {"name": "Ceiling Light", "category": "ElectricsAndThermo"},
+            {"name": "Oven Slot", "category": "Appliances"},
+            {"name": "Washing Machine Slot", "category": "Appliances"},
         ],
     },
     "Map 2": {
-        # add reasonable defaults for Map 2 rooms
         "bedroom": [
-            {"name": "Light", "category": "Lighting and Climate Control"},
+            {"name": "Light", "category": "ElectricsAndThermo"},
             {"name": "Blinds", "category": "Miscellaneous"},
         ],
         "bathroom": [
-            {"name": "Light", "category": "Lighting and Climate Control"}
+            {"name": "Light", "category": "ElectricsAndThermo"}
         ],
         "office": [
-            {"name": "Desk Plug", "category": "Lighting and Climate Control"},
+            {"name": "Desk Plug", "category": "ElectricsAndThermo"},
             {"name": "Air Purifier Slot", "category": "Miscellaneous"},
         ],
         "living_room": [
-            {"name": "Main Light", "category": "Lighting and Climate Control"},
-            {"name": "Oven Slot", "category": "Appliances and convenience"},
+            {"name": "Main Light", "category": "ElectricsAndThermo"},
+            {"name": "Oven Slot", "category": "Appliances"},
         ],
         "dining": [
-            {"name": "Light", "category": "Lighting and Climate Control"},
+            {"name": "Light", "category": "ElectricsAndThermo"},
             {"name": "Blinds", "category": "Miscellaneous"},
         ],
         "kitchen": [
-            {"name": "Main Light", "category": "Lighting and Climate Control"},
-            {"name": "Oven Slot", "category": "Appliances and convenience"},
+            {"name": "Main Light", "category": "ElectricsAndThermo"},
+            {"name": "Oven Slot", "category": "Appliances"},
         ],
     },
     "Map 3": {
-        # defaults for Map 3
         "bedroom": [
-            {"name": "Light", "category": "Lighting and Climate Control"},
-            {"name": "Thermostat", "category": "Lighting and Climate Control"},
+            {"name": "Light", "category": "ElectricsAndThermo"},
+            {"name": "Thermostat", "category": "ElectricsAndThermo"},
         ],
         "bathroom": [
-            {"name": "Light", "category": "Lighting and Climate Control"}
+            {"name": "Light", "category": "ElectricsAndThermo"}
         ],
         "office": [
-            {"name": "Desk Light", "category": "Lighting and Climate Control"},
-            {"name": "Smart Plug", "category": "Lighting and Climate Control"},
+            {"name": "Desk Light", "category": "ElectricsAndThermo"},
+            {"name": "Smart Plug", "category": "ElectricsAndThermo"},
         ],
         "living_room": [
-            {"name": "Main Light", "category": "Lighting and Climate Control"},
+            {"name": "Main Light", "category": "ElectricsAndThermo"},
             {"name": "Blinds", "category": "Miscellaneous"},
-            {"name": "TV Plug", "category": "Appliances and convenience"},
+            {"name": "TV Plug", "category": "Appliances"},
         ],
         "dining": [
-            {"name": "Light", "category": "Lighting and Climate Control"}
+            {"name": "Light", "category": "ElectricsAndThermo"}
         ],
         "kitchen": [
-            {"name": "Main Light", "category": "Lighting and Climate Control"},
-            {"name": "Oven Slot", "category": "Appliances and convenience"},
+            {"name": "Main Light", "category": "ElectricsAndThermo"},
+            {"name": "Oven Slot", "category": "Appliances"},
         ],
     }
 }
 
 class Map:
     def __init__(self, screen, bg_path, rooms, y_offset=100):
-        """
-        screen: pygame display surface
-        bg_path: path to background image
-        rooms: dict of room_name -> pygame.Rect (coordinates relative to top-left of the image)
-        y_offset: number of pixels to move the map down (and shift the room rects the same amount)
-        """
         self.screen = screen
         self.y_offset = y_offset
 
         loaded = pygame.image.load(bg_path).convert()
-        # scale background to fit width and remaining height (so map appears lower)
         self.bg = pygame.transform.scale(loaded, (screen.get_width(), screen.get_height() - self.y_offset))
         self.bg_rect = self.bg.get_rect(topleft=(0, self.y_offset))
 
-        # shift room rects by y_offset so they align with the moved background
         self.rooms = {name: rect.copy().move(0, self.y_offset) for name, rect in rooms.items()}
 
         self.selected_room = None
@@ -143,16 +133,12 @@ class Map:
         self.room_items = {name: None for name in self.rooms}
 
     def draw(self):
-        # draw background at offset
         self.screen.blit(self.bg, self.bg_rect.topleft)
-
-        # draw hover/selection rectangles and any items
         for name, rect in self.rooms.items():
             if name == self.selected_room:
                 pygame.draw.rect(self.screen, (0, 200, 0), rect, 3)
             elif name == self.hovered_room:
                 pygame.draw.rect(self.screen, (200, 100, 0), rect, 3)
-            # draw item placeholder if present
             item = self.room_items.get(name)
             if item:
                 pygame.draw.circle(self.screen, (0, 0, 255), rect.center, min(rect.w, rect.h)//6)

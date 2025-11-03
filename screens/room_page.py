@@ -136,11 +136,12 @@ class RoomPage:
             pygame.draw.rect(self.screen, (140,140,140), rect, 2)
 
             # render category and name with larger default sizes for readability
-            cat_surf = self._render_text_fit(slot["category"], rect.w - 12, bold=True, start_sizes=(24,22,20))
+            # bigger start sizes for category and name (increased for legibility)
+            cat_surf = self._render_text_fit(slot["category"], rect.w - 12, bold=True, start_sizes=(32,30,28))
             self.screen.blit(cat_surf, (rect.x + 6, rect.y + 6))
 
-            name_surf = self._render_text_fit(slot["name"], rect.w - 12, start_sizes=(20,18,16))
-            self.screen.blit(name_surf, (rect.x + 6, rect.y + 6 + cat_surf.get_height() + 2))
+            name_surf = self._render_text_fit(slot["name"], rect.w - 12, start_sizes=(28,26,24))
+            self.screen.blit(name_surf, (rect.x + 6, rect.y + 6 + cat_surf.get_height() + 4))
 
             # item placeholder area (empty until drop)
             ph_rect = pygame.Rect(rect.x + 8, rect.y + rect.h//2 - 12, rect.w - 16, 24)
@@ -185,10 +186,9 @@ class RoomPage:
            start_sizes: optional iterable of sizes to try first.
         """
         if start_sizes:
-            # ensure tuple and include some fallback sizes
-            sizes = tuple(start_sizes) + (16, 14, 12, 10, 8)
+            sizes = tuple(start_sizes) + (26, 24, 22, 20, 18, 16, 14, 12, 10, 8)
         else:
-            sizes = (20, 18, 16, 14, 12, 10, 8)
+            sizes = (28, 26, 24, 22, 20, 18, 16, 14, 12, 10, 8)
 
         for size in sizes:
             f = pygame.font.SysFont(None, size, bold=bold)
@@ -202,3 +202,6 @@ class RoomPage:
         while txt and f.size(txt + '…')[0] > max_w:
             txt = txt[:-1]
         return f.render((txt + '…') if txt else '…', True, (230,230,230))
+
+# if any default slot category strings exist replace them, e.g.:
+    {"name": "Slot 1", "category": "ElectricsAndThermo"},

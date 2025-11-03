@@ -20,7 +20,8 @@ class ItemBar:
         self.placeholder_gap = placeholder_gap
 
         # item label font (larger so text is readable)
-        self.item_font = pygame.font.SysFont(None, 18)
+        # significantly larger so item names are legible in placeholders
+        self.item_font = pygame.font.SysFont(None, 28)
 
         # UI state
         self.selected_category = categories[0] if categories else None
@@ -105,8 +106,8 @@ class ItemBar:
            Tries decreasing font sizes (relative to provided font) then truncates with ellipsis."""
         if font is None:
             font = self.small_font
-        # attempt with the font's size and then reduce
-        base_size = max(8, font.get_height())
+        # attempt with the font's size (or a larger starting size) and then reduce
+        base_size = max(12, font.get_height(), 28)
         for s in range(base_size, 7, -1):
             f = pygame.font.SysFont(None, s)
             w, h = f.size(text)
@@ -117,6 +118,28 @@ class ItemBar:
         while txt and f.size(txt + '…')[0] > max_w:
             txt = txt[:-1]
         return f.render((txt + '…') if txt else '…', True, (230,230,230))
+
+    def _render_two_line(self, line1, line2, max_w, max_h):
+        """Attempt to render two lines stacked to fit into max_w x max_h.
+           Returns a surface containing both lines vertically."""
+        color = (230,230,230)
+        # try sizes from a larger starting height downwards for better readability
+        start_size = max(12, self.item_font.get_height(), 28)
+        for s in range(start_size, 7, -1):
+            f = pygame.font.SysFont(None, s)
+            w1, h1 = f.size(line1)
+            w2, h2 = f.size(line2)
+            total_h = h1 + h2 + 2
+            if w1 <= max_w and w2 <= max_w and total_h <= max_h:
+                surf = pygame.Surface((max_w, total_h), pygame.SRCALPHA)
+                surf.fill((0,0,0,0))
+                r1 = f.render(line1, True, color)
+                r2 = f.render(line2, True, color)
+                surf.blit(r1, ((max_w - r1.get_width())//2, 0))
+                surf.blit(r2, ((max_w - r2.get_width())//2, h1 + 2))
+                return surf
+        # fallback: render single-line truncated
+        return self._render_text_fit(line1 + " " + line2, max_w, font=self.item_font)
 
     def handle_event(self, event):
         # category buttons handle clicks
@@ -179,13 +202,23 @@ class ItemBar:
                         self.screen.blit(surf, (rect.x + (rect.w - surf.get_width())//2, rect.y + (rect.h - surf.get_height())//2))
                     else:
                         name = item.get("name","")
-                        # use larger item_font so labels are readable
-                        txt = self._render_text_fit(name, rect.w-8, font=self.item_font)
-                        self._blit_text_centered(txt, rect)
+                        # if name has two words, render stacked; otherwise single-line
+                        if len(name.split()) == 2:
+                            w1, w2 = name.split()
+                            txt = self._render_two_line(w1, w2, rect.w - 8, rect.h - 8)
+                            self._blit_text_centered(txt, rect)
+                        else:
+                            txt = self._render_text_fit(name, rect.w-8, font=self.item_font)
+                            self._blit_text_centered(txt, rect)
                 else:
                     name = item.get("name","")
-                    txt = self._render_text_fit(name, rect.w-8, font=self.item_font)
-                    self._blit_text_centered(txt, rect)
+                    if len(name.split()) == 2:
+                        w1, w2 = name.split()
+                        txt = self._render_two_line(w1, w2, rect.w - 8, rect.h - 8)
+                        self._blit_text_centered(txt, rect)
+                    else:
+                        txt = self._render_text_fit(name, rect.w-8, font=self.item_font)
+                        self._blit_text_centered(txt, rect)
 
     def _blit_text_centered(self, surf, rect):
         x = rect.centerx - surf.get_width() // 2
