@@ -23,12 +23,13 @@ class RoomPage:
         w, h = screen.get_size()
         self.title_y = 24
         self.top_padding = 12
-        self.slot_size = 96
+        # increase slot size and move slots lower so categories / item bar don't overlap room content
+        self.slot_size = 120
         self.slot_gap = 24
-        self.slot_top = 120
+        self.slot_top = 200  
 
-        # Back button placed below item bar to avoid overlap (y chosen previously)
-        self.back_button = Button(16, 104, 90, 36, "Back", self._on_back, font=self.font)
+        # Back button placed below the item bar (moved lower to avoid overlap)
+        self.back_button = Button(16, 140, 90, 36, "Back", self._on_back, font=self.font)
 
         # remove button (created when needed)
         self.remove_button = None
@@ -97,7 +98,7 @@ class RoomPage:
             self.remove_button.handle_event(event)
 
     def handle_event(self, event):
-        # back button first (priority)
+        # back button
         self.back_button.handle_event(event)
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -111,6 +112,7 @@ class RoomPage:
                         self.show_remove_for_slot(idx)
                         print(f"[ROOM] slot '{slot['name']}' clicked (has item) - showing Remove button")
                     else:
+                        # clicking empty slot does nothing here — drop handled in main
                         print(f"[ROOM] slot '{slot['name']}' clicked (empty) - ready for drop")
                     break
 
@@ -133,10 +135,11 @@ class RoomPage:
             pygame.draw.rect(self.screen, (70,70,70), rect)
             pygame.draw.rect(self.screen, (140,140,140), rect, 2)
 
-            cat_surf = self._render_text_fit(slot["category"], rect.w - 12, bold=True)
+            # render category and name with larger default sizes for readability
+            cat_surf = self._render_text_fit(slot["category"], rect.w - 12, bold=True, start_sizes=(24,22,20))
             self.screen.blit(cat_surf, (rect.x + 6, rect.y + 6))
 
-            name_surf = self._render_text_fit(slot["name"], rect.w - 12)
+            name_surf = self._render_text_fit(slot["name"], rect.w - 12, start_sizes=(20,18,16))
             self.screen.blit(name_surf, (rect.x + 6, rect.y + 6 + cat_surf.get_height() + 2))
 
             # item placeholder area (empty until drop)
@@ -158,7 +161,7 @@ class RoomPage:
                 else:
                     self._draw_item_text(item, rect)
 
-        # draw back button (will be drawn under item_bar in main but we still draw here for consistency)
+        # draw back button
         self.back_button.draw(self.screen)
 
     def draw_remove_button(self, surface):
@@ -176,12 +179,24 @@ class RoomPage:
         x = start_x + idx * (self.slot_size + self.slot_gap)
         return pygame.Rect(x, self.slot_top, self.slot_size, self.slot_size)
 
-    def _render_text_fit(self, text, max_w, bold=False):
-        for size in (20, 18, 16, 14, 12, 10, 8):
+    def _render_text_fit(self, text, max_w, bold=False, start_sizes=None):
+        """Return a Surface with text rendered small enough to fit inside max_w.
+           Tries decreasing font sizes then truncates with ellipsis if needed.
+           start_sizes: optional iterable of sizes to try first.
+        """
+        if start_sizes:
+            # ensure tuple and include some fallback sizes
+            sizes = tuple(start_sizes) + (16, 14, 12, 10, 8)
+        else:
+            sizes = (20, 18, 16, 14, 12, 10, 8)
+
+        for size in sizes:
             f = pygame.font.SysFont(None, size, bold=bold)
             w, h = f.size(text)
             if w <= max_w:
                 return f.render(text, True, (230,230,230))
+
+        # truncate with ellipsis as last resort
         f = pygame.font.SysFont(None, 8, bold=bold)
         txt = text
         while txt and f.size(txt + '…')[0] > max_w:

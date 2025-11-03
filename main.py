@@ -1,5 +1,8 @@
 import pygame
 import sys
+import traceback
+import random
+from datetime import datetime
 
 from database.user_db import init_db, register_user, check_user
 from ui.input_box import InputBox
@@ -36,83 +39,117 @@ dragging_item = None
 dragging_surf = None
 dragging_offset = (0, 0)
 
-# ensure map drawn below the item bar
-MAP_Y_OFFSET = 72  # same as item_bar height
+# current room page and name
+current_room_page = None
+current_room_name = None
 
-# add new state for room view
-LOGIN, REGISTER, MENU, SETTINGS, SIMULATION, MAP_SELECT, ROOM_VIEW = 'login', 'register', 'menu', 'settings', 'simulation', 'map_select', 'room_view'
+# placements: placements[map_name][room_name] = [ item_dict_or_None, ... ] (slot-aligned)
+placements = {}
+
+# ensure map drawn below the item bar
+MAP_Y_OFFSET = 120  # moved lower so item bar/categories don't overlap map
+
+# add new state for room view and day summary
+LOGIN, REGISTER, MENU, SETTINGS, SIMULATION, MAP_SELECT, ROOM_VIEW, DAY_SUMMARY = (
+    'login', 'register', 'menu', 'settings', 'simulation', 'map_select', 'room_view', 'day_summary'
+)
 screen_state = LOGIN
 selected_map_name = None
 
-# Input boxes for login/register
-username_box = InputBox(300, 200, 200, 40, font=FONT)
-password_box = InputBox(300, 260, 200, 40, font=FONT)
-input_boxes = [username_box, password_box]
+# Time / energy system
+# current day runs for 30 seconds
+day_duration_seconds = 30
+day_elapsed_seconds = 0.0
+minutes_per_second = 1440.0 / float(day_duration_seconds)  # computed as 1440 / day_duration_seconds
 
-login_error = ''
+simulation_running = True  # simulation running flag (pauses when day ends)
+# meter per-day is represented by daily_energy_kwh (reset each day)
+daily_energy_kwh = 0.0
+daily_cost = 0.0
 
-def switch_to_register():
-    global screen_state, username_box, password_box, login_error
-    screen_state = REGISTER
-    username_box.text = ''
-    password_box.text = ''
-    username_box.txt_surface = FONT.render('', True, (255,255,255))
-    password_box.txt_surface = FONT.render('', True, (255,255,255))
-    login_error = ''
+daily_history = []  # list of {"energy":..., "cost":..., "date":...}
+day_number = 0  # number of completed days
 
-def switch_to_login():
-    global screen_state, username_box, password_box, login_error
-    screen_state = LOGIN
-    username_box.text = ''
-    password_box.text = ''
-    username_box.txt_surface = FONT.render('', True, (255,255,255))
-    password_box.txt_surface = FONT.render('', True, (255,255,255))
-    login_error = ''
+# UI Continue button on day summary (created later)
+continue_button = None
 
-def go_to_menu():
-    global screen_state
-    screen_state = MENU
+# internal timing for main loop
+last_time = pygame.time.get_ticks() / 1000.0
 
-def go_to_simulation():
-    go_to_map_select()
+def start_new_day():
+    global day_duration_seconds, day_elapsed_seconds, minutes_per_second, simulation_running
+    # fixed duration: 30 seconds per simulated day
+    day_duration_seconds = 30
+    day_elapsed_seconds = 0.0
+    minutes_per_second = 1440.0 / float(day_duration_seconds)  # full day = 1440 minutes
+    simulation_running = True
+    print(f"[TIME] Starting new simulated day ({day_duration_seconds}s → {minutes_per_second:.2f} min/sec)")
 
-def go_to_map_select():
-    global screen_state
-    screen_state = MAP_SELECT
+def end_current_day():
+    global simulation_running, continue_button, screen_state
+    simulation_running = False
+    # create Continue button in center
+    btn_w, btn_h = 220, 48
+    btn_x = WIDTH // 2 - btn_w // 2
+    btn_y = HEIGHT // 2 + 80
+    # callback assigned below via on_continue()
+    continue_button = Button(btn_x, btn_y, btn_w, btn_h, "Continue", on_continue, font=FONT)
+    screen_state = DAY_SUMMARY
+    print("[TIME] Day finished — showing day summary")
 
-def select_map(map_name):
-    global selected_map_name, screen_state, current_map
-    selected_map_name = map_name
-    # pass MAP_Y_OFFSET so the map and its room rects are shifted down under the item bar
-    current_map = Map(screen, MAPS[map_name], ROOMS[map_name], y_offset=MAP_Y_OFFSET)
+def on_continue():
+    global day_number, daily_history, daily_energy_kwh, daily_cost, meter_energy_kwh, screen_state
+    # save today's totals into history
+    day_number += 1
+    daily_history.append({
+        "day_index": day_number,
+        "energy": daily_energy_kwh,
+        "cost": daily_cost,
+        "date": datetime.utcnow().isoformat()
+    })
+    # reset daily counters and start next day
+    daily_energy_kwh = 0.0
+    daily_cost = 0.0
+    start_new_day()
+    # return to simulation
     screen_state = SIMULATION
-    item_bar.resize(screen.get_width())
+    print(f"[TIME] Continue pressed — starting day {day_number+1}")
 
 def add_default_items():
+    # energy_per_min is kWh per minute = power_kW / 60
+    # realistic example power values:
+    # LED bulb ~10W (0.01 kW) -> per min = 0.01/60 = 0.000167 kWh/min
+    # Incandescent ~60W -> 0.06/60 = 0.001 kWh/min
+    # Halogen ~50W -> 0.05/60 = 0.000833 kWh/min
+    # Thermostat / small sensors ~1W -> 0.001/60 ~ 0.000017 kWh/min (we keep small but nonzero)
+    # Smart plug idle ~2W -> 0.002/60 = 0.000033 kWh/min (very small)
+    # Washing machine (active) ~0.5 kW -> 0.5/60 = 0.00833 kWh/min
+    # Oven ~2.5 kW -> 2.5/60 = 0.04167 kWh/min
+    # Air purifier ~50W -> 0.05/60 = 0.000833 kWh/min
     lighting = [
-        ("LED bulbs", "Lighting and Climate Control", 0.005),
-        ("Incandescent bulbs", "Lighting and Climate Control", 0.02),
-        ("Halogen", "Lighting and Climate Control", 0.018),
-        ("Manual Thermostat", "Lighting and Climate Control", 0.001),
-        ("Smart Thermostat", "Lighting and Climate Control", 0.002),
-        ("Smart plug", "Lighting and Climate Control", 0.0005),
+        ("LED bulbs", "Lighting and Climate Control", 0.01/60),
+        ("Incandescent bulbs", "Lighting and Climate Control", 0.06/60),
+        ("Halogen", "Lighting and Climate Control", 0.05/60),
+        ("Manual Thermostat", "Lighting and Climate Control", 0.001/60),
+        ("Smart Thermostat", "Lighting and Climate Control", 0.002/60),
+        ("Smart plug", "Lighting and Climate Control", 0.002/60),
         ("UK plug (Type G)", "Lighting and Climate Control", 0.0),
     ]
     appliances = [
-        ("Manual Washing Machine", "Appliances and convenience", 0.12),
-        ("Smart Washing Machine", "Appliances and convenience", 0.10),
-        ("Conventional oven", "Appliances and convenience", 0.25),
-        ("Smart oven", "Appliances and convenience", 0.20),
+        ("Manual Washing Machine", "Appliances and convenience", 0.5/60),
+        ("Smart Washing Machine", "Appliances and convenience", 0.5/60),
+        ("Conventional oven", "Appliances and convenience", 2.5/60),
+        ("Smart oven", "Appliances and convenience", 2.0/60),
     ]
     misc = [
-        ("Air purifier", "Miscellaneous", 0.04),
-        ("Smart Air Purifier", "Miscellaneous", 0.035),
+        ("Air purifier", "Miscellaneous", 0.05/60),
+        ("Smart Air Purifier", "Miscellaneous", 0.035/60),
         ("Blinds", "Miscellaneous", 0.0),
-        ("Smart Blinds", "Miscellaneous", 0.001),
+        ("Smart Blinds", "Miscellaneous", 0.001/60),
     ]
 
     for name, cat, epm in lighting + appliances + misc:
-        add_item_type_if_not_exists(name, cat, energy_per_min=epm, cost_per_kwh=0.2, icon_path=None)
+        add_item_type_if_not_exists(name, cat, energy_per_min=epm, cost_per_kwh=0.20, icon_path=None)
 
 add_default_items()
 
@@ -133,6 +170,10 @@ def on_item_selected(item):
 def go_to_settings():
     global screen_state
     screen_state = SETTINGS
+
+def go_to_menu():
+    global screen_state
+    screen_state = MENU
 
 def back_to_menu():
     global screen_state
@@ -156,11 +197,10 @@ def logout():
 def quit_program():
     pygame.quit()
     sys.exit()
-    
 
 menu_page = MenuPage(
     screen, FONT, SMALL_FONT,
-    on_start=go_to_simulation,
+    on_start=lambda: go_to_map_select(),
     on_settings=go_to_settings,
     on_logout=logout,
     on_quit=quit_program,
@@ -181,6 +221,60 @@ item_bar = ItemBar(
     on_category_change=on_category_change,
     on_item_click=on_item_selected
 )
+
+# continue_button created dynamically when a day ends (see end_current_day)
+
+# Helper: ensure placements dict has structure for a map & room and return list of items (None for empty)
+def ensure_room_placements(map_name, room_name, slots_cfg):
+    if map_name not in placements:
+        placements[map_name] = {}
+    if room_name not in placements[map_name]:
+        # initialize with None entries matching number of slots
+        placements[map_name][room_name] = [None] * len(slots_cfg)
+    return placements[map_name][room_name]
+
+def get_all_placed_items():
+    """Return iterator of all placed item dicts (skip None)."""
+    for m in placements.values():
+        for room_list in m.values():
+            for itm in room_list:
+                if itm:
+                    yield itm
+
+# Login / register UI (kept from previous)
+username_box = InputBox(300, 200, 200, 40, font=FONT)
+password_box = InputBox(300, 260, 200, 40, font=FONT)
+input_boxes = [username_box, password_box]
+login_error = ''
+
+def switch_to_register():
+    global screen_state, username_box, password_box, login_error
+    screen_state = REGISTER
+    username_box.text = ''
+    password_box.text = ''
+    username_box.txt_surface = FONT.render('', True, (255,255,255))
+    password_box.txt_surface = FONT.render('', True, (255,255,255))
+    login_error = ''
+
+def switch_to_login():
+    global screen_state, username_box, password_box, login_error
+    screen_state = LOGIN
+    username_box.text = ''
+    password_box.text = ''
+    username_box.txt_surface = FONT.render('', True, (255,255,255))
+    password_box.txt_surface = FONT.render('', True, (255,255,255))
+    login_error = ''
+
+def go_to_map_select():
+    global screen_state
+    screen_state = MAP_SELECT
+
+def select_map(map_name):
+    global selected_map_name, screen_state, current_map
+    selected_map_name = map_name
+    current_map = Map(screen, MAPS[map_name], ROOMS[map_name], y_offset=MAP_Y_OFFSET)
+    screen_state = SIMULATION
+    item_bar.resize(screen.get_width())
 
 def try_login():
     global screen_state, login_error
@@ -220,15 +314,25 @@ create_map_select_buttons()
 
 # add helper to go back from room view
 def go_back_from_room():
-    global screen_state, current_room_page
+    global screen_state, current_room_page, current_room_name
     current_room_page = None
+    current_room_name = None
     screen_state = SIMULATION
 
+# start first day
+start_new_day()
+
+# main loop
 running = True
 while running:
+    now = pygame.time.get_ticks() / 1000.0
+    dt = now - last_time
+    last_time = now
+
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+
         if screen_state in [LOGIN, REGISTER]:
             for box in input_boxes:
                 box.handle_event(event)
@@ -238,83 +342,136 @@ while running:
             else:
                 register_submit_button.handle_event(event)
                 back_button.handle_event(event)
+
         elif screen_state == MENU:
             menu_page.handle_event(event)
+
         elif screen_state == SETTINGS:
             settings_page.handle_event(event)
+
         elif screen_state == MAP_SELECT:
             for btn in map_select_buttons:
                 btn.handle_event(event)
+
         elif screen_state == SIMULATION:
             # item bar should capture top clicks first
             item_bar.handle_event(event)
             if current_map:
                 current_map.handle_event(event)
+
                 # if the map registered a selected room (user clicked a room), open the room view
                 selected_room = current_map.get_selected_room()
                 if selected_room:
-                    # create RoomPage for this room using ROOM_SLOTS if available
                     slots_cfg = ROOM_SLOTS.get(selected_map_name, {}).get(selected_room, [])
                     if not slots_cfg:
                         slots_cfg = [
                             {"name": "Slot 1", "category": "Lighting and Climate Control"},
                             {"name": "Slot 2", "category": "Lighting and Climate Control"},
                         ]
-                    # create room page with on_back callback that returns to SIMULATION
-                    current_room_page = RoomPage(
-                        screen, FONT, SMALL_FONT, selected_map_name, selected_room, slots_cfg,
-                        on_back=go_back_from_room
-                    )
-                    screen_state = ROOM_VIEW
-                    # clear selected room on map so it doesn't reopen repeatedly
-                    current_map.selected_room = None
+                    try:
+                        # ensure placements exist for this room
+                        room_place_list = ensure_room_placements(selected_map_name, selected_room, slots_cfg)
+
+                        # create RoomPage and populate with existing placements
+                        current_room_page = RoomPage(
+                            screen, FONT, SMALL_FONT, selected_map_name, selected_room, slots_cfg,
+                            on_back=go_back_from_room
+                        )
+                        current_room_name = selected_room
+                        # populate RoomPage.slots with previously placed items (if any)
+                        for i in range(min(len(room_place_list), len(current_room_page.slots))):
+                            current_room_page.slots[i]["item"] = room_place_list[i]
+                        screen_state = ROOM_VIEW
+                        current_map.selected_room = None
+                    except Exception:
+                        print("[ERROR] creating RoomPage for", selected_room)
+                        traceback.print_exc()
+                        current_room_page = None
+                        current_map.selected_room = None
 
         elif screen_state == ROOM_VIEW:
-            # Priority: allow RoomPage to handle its own clicks first (back, show remove button)
+            # RoomPage handles clicks first so Back button gets priority
             if current_room_page:
                 current_room_page.handle_event(event)
 
             # Start drag: only allow starting a drag from the item bar while inside a room
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                # check if mouse down was on an item in the item bar
                 itm, itm_rect = item_bar.get_item_at_pos(event.pos)
                 if itm:
-                    # begin dragging this item
                     dragging_item = itm
                     dragging_surf = item_bar.create_item_surface(itm, item_bar.placeholder_size)
-                    # record offset so cursor can appear where clicked
                     dragging_offset = (event.pos[0] - itm_rect.x, event.pos[1] - itm_rect.y)
-                    # do not let item_bar.handle_event process this click (we already started drag)
-                    # skip further per-event handling
+                    # don't let item_bar handle this particular mouse-down
                     continue
 
-            # Drag motion: track mouse while button held
+            # Drag motion (nothing to change here; drawn in render)
             if event.type == pygame.MOUSEMOTION and dragging_item:
-                # nothing special to do here; main loop will draw dragging_surf at mouse pos
                 pass
 
             # Drop / end drag
             if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and dragging_item:
-                # check if released over a slot in the current room
-                idx, slot, slot_rect = current_room_page.get_slot_at_pos(event.pos)
-                if idx is not None:
-                    # enforce category match
-                    if dragging_item.get("category") == slot.get("category"):
-                        current_room_page.place_item(idx, dragging_item)
-                        print(f"Placed '{dragging_item.get('name')}' into slot '{slot.get('name')}'")
-                    else:
-                        print(f"Cannot place '{dragging_item.get('name')}' into slot '{slot.get('name')}' (requires {slot.get('category')})")
-                # clear dragging state
+                if current_room_page:
+                    idx, slot, slot_rect = current_room_page.get_slot_at_pos(event.pos)
+                    if idx is not None:
+                        # enforce category match
+                        if dragging_item.get("category") == slot.get("category"):
+                            current_room_page.place_item(idx, dragging_item)
+                            # update persistent placements for this room
+                            ensure_room_placements(selected_map_name, current_room_name, ROOM_SLOTS.get(selected_map_name, {}).get(current_room_name, []))
+                            placements[selected_map_name][current_room_name][idx] = dragging_item
+                            print(f"Placed '{dragging_item.get('name')}' into slot '{slot.get('name')}'")
+                        else:
+                            print(f"Cannot place '{dragging_item.get('name')}' into slot '{slot.get('name')}' (requires {slot.get('category')})")
                 dragging_item = None
                 dragging_surf = None
-                dragging_offset = (0,0)
+                dragging_offset = (0, 0)
 
-            # pass event to item bar so categories still work in ROOM_VIEW
+            # allow item bar interactions while in room
             item_bar.handle_event(event)
 
-            # after item_bar handled the event, also forward remove-button events if any
+            # forward remove-button events then sync placements for current room
             if current_room_page:
                 current_room_page.handle_remove_event(event)
+                # sync persistent placements for this room after possible removal
+                if selected_map_name and current_room_name:
+                    # ensure structure exists
+                    slots_cfg = ROOM_SLOTS.get(selected_map_name, {}).get(current_room_name, [])
+                    ensure_room_placements(selected_map_name, current_room_name, slots_cfg)
+                    placements[selected_map_name][current_room_name] = [s["item"] for s in current_room_page.slots]
+
+        elif screen_state == DAY_SUMMARY:
+            # day summary UI: only continue button active
+            if continue_button:
+                continue_button.handle_event(event)
+
+    # --- time / simulation updates ---
+    if screen_state == SIMULATION and simulation_running:
+        # accumulate simulated minutes for this frame
+        if day_duration_seconds and minutes_per_second:
+            delta_minutes = dt * minutes_per_second
+            # sum energy for all placed items across all maps/rooms
+            frame_energy = 0.0
+            frame_cost = 0.0
+            for itm in get_all_placed_items():
+                try:
+                    epm = float(itm.get("energy_per_min", 0.0))
+                    costk = float(itm.get("cost_per_kwh", 0.0))
+                except Exception:
+                    epm = 0.0
+                    costk = 0.0
+                e_kwh = epm * delta_minutes
+                c = e_kwh * costk
+                frame_energy += e_kwh
+                frame_cost += c
+            # accumulate per-day totals (meter shows per-day)
+            daily_energy_kwh += frame_energy
+            daily_cost += frame_cost
+
+            day_elapsed_seconds += dt
+            # if day finished, pause and show summary
+            if day_elapsed_seconds >= day_duration_seconds:
+                # prepare day summary values (we keep daily_energy_kwh/daily_cost)
+                end_current_day()
 
     # draw
     screen.fill((30, 30, 30))
@@ -333,6 +490,7 @@ while running:
         if login_error:
             err = SMALL_FONT.render(login_error, True, (255, 80, 80))
             screen.blit(err, (300, 370))
+
     elif screen_state == REGISTER:
         title = FONT.render('Register', True, (255,255,255))
         screen.blit(title, (WIDTH//2 - title.get_width()//2, 120))
@@ -347,23 +505,30 @@ while running:
         if login_error:
             err = SMALL_FONT.render(login_error, True, (255, 80, 80))
             screen.blit(err, (300, 370))
+
     elif screen_state == MENU:
         menu_page.draw()
+
     elif screen_state == SETTINGS:
         settings_page.draw()
+
     elif screen_state == MAP_SELECT:
         screen.fill((30, 30, 30))
         title = FONT.render("Select a Map", True, (255,255,255))
         screen.blit(title, (WIDTH//2 - title.get_width()//2, 100))
         for btn in map_select_buttons:
             btn.draw(screen)
+
     elif screen_state == SIMULATION:
         if current_map:
             current_map.draw()
         item_bar.draw()
-        if selected_item:
-            si = SMALL_FONT.render(f"Selected: {selected_item['name']}", True, (200,200,100))
-            screen.blit(si, (10, item_bar.rect.bottom + 8))
+        # show small running timer and meter (meter now shows current day's total)
+        timer_text = SMALL_FONT.render(f"Day time: {int(day_elapsed_seconds)}s / {int(day_duration_seconds) if day_duration_seconds else 0}s", True, (200,200,200))
+        screen.blit(timer_text, (10, item_bar.rect.bottom + 32))
+        meter_text = SMALL_FONT.render(f"Today's meter (kWh): {daily_energy_kwh:.4f}", True, (200,200,100))
+        screen.blit(meter_text, (10, item_bar.rect.bottom + 60))
+
     elif screen_state == ROOM_VIEW:
         # Draw room (full-screen)
         if current_room_page:
@@ -376,14 +541,36 @@ while running:
         # Ensure Back button is visible above the item bar
         if current_room_page:
             current_room_page.back_button.draw(screen)
-
         # Draw dragging preview on top if any
         if dragging_item and dragging_surf:
             mx, my = pygame.mouse.get_pos()
-            # position so mouse is at same offset relative to original placeholder
             draw_x = mx - dragging_offset[0]
             draw_y = my - dragging_offset[1]
             screen.blit(dragging_surf, (draw_x, draw_y))
+
+    elif screen_state == DAY_SUMMARY:
+        # show day's totals and a Continue button
+        title = FONT.render("Day Summary", True, (255,255,255))
+        screen.blit(title, (WIDTH//2 - title.get_width()//2, 80))
+        # today's totals
+        energy_txt = SMALL_FONT.render(f"Today's energy: {daily_energy_kwh:.4f} kWh", True, (220,220,220))
+        cost_txt = SMALL_FONT.render(f"Today's cost: £{daily_cost:.4f}", True, (220,220,220))
+        screen.blit(energy_txt, (WIDTH//2 - energy_txt.get_width()//2, 160))
+        screen.blit(cost_txt, (WIDTH//2 - cost_txt.get_width()//2, 200))
+
+        # compute temporary history including today's values to check week totals
+        temp_hist = daily_history + [{"energy": daily_energy_kwh, "cost": daily_cost}]
+        if len(temp_hist) >= 7:
+            # sum last 7 days (most recent)
+            last7 = temp_hist[-7:]
+            week_energy = sum(d["energy"] for d in last7)
+            week_cost = sum(d["cost"] for d in last7)
+            week_txt = SMALL_FONT.render(f"Last 7 days: {week_energy:.4f} kWh, £{week_cost:.4f}", True, (200,200,150))
+            screen.blit(week_txt, (WIDTH//2 - week_txt.get_width()//2, 260))
+
+        # continue button
+        if continue_button:
+            continue_button.draw(screen)
 
     if show_fps:
         fps_text = SMALL_FONT.render(f"FPS: {int(clock.get_fps())}", True, (0,255,0))
