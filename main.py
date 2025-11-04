@@ -109,6 +109,9 @@ simulation_running = False  # simulation runs only after user presses Start Day
 daily_energy_kwh = 0.0
 daily_cost = 0.0
 
+# per-item usage collected during the current simulated day
+daily_item_usage = {}   # { item_name: {"energy": kWh, "cost": £, "category": "..."} }
+
 daily_history = []  # list of {"energy":..., "cost":..., "date":...}
 day_number = 0  # number of completed days
 
@@ -120,27 +123,31 @@ last_time = pygame.time.get_ticks() / 1000.0
 
 def start_new_day():
     global day_duration_seconds, day_elapsed_seconds, minutes_per_second, simulation_running
+    global daily_item_usage, daily_energy_kwh, daily_cost
     # fixed duration: 30 seconds per simulated day
     day_duration_seconds = 30
     day_elapsed_seconds = 0.0
     minutes_per_second = 1440.0 / float(day_duration_seconds)  # full day = 1440 minutes
     simulation_running = True
+    # reset per-day accumulators and per-item breakdown
+    daily_item_usage = {}
+    daily_energy_kwh = 0.0
+    daily_cost = 0.0
     print(f"[TIME] Starting new simulated day ({day_duration_seconds}s → {minutes_per_second:.2f} min/sec)")
 
 def end_current_day():
     global simulation_running, continue_button, screen_state
     simulation_running = False
-    # create Continue button in center
+    # place Continue button at bottom-right to avoid overlapping summary content
     btn_w, btn_h = 220, 48
-    btn_x = WIDTH // 2 - btn_w // 2
-    btn_y = HEIGHT // 2 + 80
-    # callback assigned below via on_continue()
+    btn_x = WIDTH - btn_w - 24
+    btn_y = HEIGHT - btn_h - 24
     continue_button = Button(btn_x, btn_y, btn_w, btn_h, "Continue", on_continue, font=FONT)
     screen_state = DAY_SUMMARY
     print("[TIME] Day finished — showing day summary")
 
 def on_continue():
-    global day_number, daily_history, daily_energy_kwh, daily_cost, meter_energy_kwh, screen_state
+    global day_number, daily_history, daily_energy_kwh, daily_cost, meter_energy_kwh, screen_state, day_started
     # save today's totals into history
     day_number += 1
     daily_history.append({
@@ -153,9 +160,40 @@ def on_continue():
     daily_energy_kwh = 0.0
     daily_cost = 0.0
     start_new_day()
+    # ensure the simulation actually runs
+    day_started = True
     # return to simulation
     screen_state = SIMULATION
     print(f"[TIME] Continue pressed — starting day {day_number+1}")
+
+# --- moved here so it's defined before the main loop ---
+def suggest_improvements(item_name, category, energy_per_min):
+    """Return a short suggestion string for the given item."""
+    # basic heuristics:
+    epm = 0.0
+    try:
+        epm = float(energy_per_min)
+    except Exception:
+        pass
+
+    name = (item_name or "").lower()
+    if "incandescent" in name:
+        return "Consider switching to LED bulbs to save energy."
+    if "oven" in name:
+        return "Use efficient cooking modes or reduce oven time where possible."
+    if "washing" in name:
+        return "Run full loads and use eco cycle to reduce energy."
+    if "air-purifier" in name or "air purifier" in name:
+        return "Run intermittently or on lower speed when possible."
+    if "smart" in name:
+        return "Can be controlled remotely; consider scheduling/off when unused."
+    if "manual" in name:
+        return "Consider smart alternatives to enable remote control and scheduling."
+    # high-power general suggestion
+    if epm > (0.02):  # threshold kWh / min (approx 1.2 kW average)
+        return "High consumption — reduce runtime or replace with an efficient model."
+    # default
+    return "Turn off when not in use and consider energy-efficient alternatives."
 
 def add_default_items():
     # energy_per_min is kWh per minute = power_kW / 60
@@ -628,32 +666,38 @@ while running:
     # --- time / simulation updates ---
     # only advance simulated time after the user pressed Start Day
     if screen_state == SIMULATION and day_started and simulation_running:
-         # accumulate simulated minutes for this frame
-         if day_duration_seconds and minutes_per_second:
-             delta_minutes = dt * minutes_per_second
-             # sum energy for all ON placed items across all maps/rooms
-             frame_energy = 0.0
-             frame_cost = 0.0
-             for itm in iter_active_placed_items():
-                 try:
-                     epm = float(itm.get("energy_per_min", 0.0))
-                     costk = float(itm.get("cost_per_kwh", 0.0))
-                 except Exception:
-                     epm = 0.0
-                     costk = 0.0
-                 e_kwh = epm * delta_minutes
-                 c = e_kwh * costk
-                 frame_energy += e_kwh
-                 frame_cost += c
-             # accumulate per-day totals (meter shows per-day)
-             daily_energy_kwh += frame_energy
-             daily_cost += frame_cost
+        # accumulate simulated minutes for this frame
+        if day_duration_seconds and minutes_per_second:
+            delta_minutes = dt * minutes_per_second
+            # sum energy for all ON placed items across all maps/rooms
+            frame_energy = 0.0
+            frame_cost = 0.0
+            for itm in iter_active_placed_items():
+                try:
+                    epm = float(itm.get("energy_per_min", 0.0))
+                    costk = float(itm.get("cost_per_kwh", 0.0))
+                except Exception:
+                    epm = 0.0
+                    costk = 0.0
+                e_kwh = epm * delta_minutes
+                c = e_kwh * costk
+                frame_energy += e_kwh
+                frame_cost += c
+                # record per-item usage for the day (keyed by item name)
+                name = itm.get("name", "Unknown")
+                entry = daily_item_usage.setdefault(name, {"energy": 0.0, "cost": 0.0, "category": itm.get("category", ""), "epm": epm})
+                entry["energy"] += e_kwh
+                entry["cost"] += c
 
-             day_elapsed_seconds += dt
-             # if day finished, pause and show summary
-             if day_elapsed_seconds >= day_duration_seconds:
-                 # prepare day summary values (we keep daily_energy_kwh/daily_cost)
-                 end_current_day()
+            # accumulate per-day totals (meter shows per-day)
+            daily_energy_kwh += frame_energy
+            daily_cost += frame_cost
+
+            day_elapsed_seconds += dt
+            # if day finished, pause and show summary
+            if day_elapsed_seconds >= day_duration_seconds:
+                # prepare day summary values (we keep daily_energy_kwh/daily_cost)
+                end_current_day()
 
     # draw
     screen.fill((30, 30, 30))
@@ -764,7 +808,28 @@ while running:
             week_txt = SMALL_FONT.render(f"Last 7 days: {week_energy:.4f} kWh, £{week_cost:.4f}", True, (200,200,150))
             screen.blit(week_txt, (WIDTH//2 - week_txt.get_width()//2, 260))
 
-        # continue button
+        # per-item breakdown (sorted by energy desc)
+        lines_x = 60
+        lines_y = 300
+        line_h = SMALL_FONT.get_height() + 6
+        sorted_items = sorted(daily_item_usage.items(), key=lambda kv: kv[1]["energy"], reverse=True)
+        if sorted_items:
+            header = ITEM_SMALL_FONT.render("Per-item usage (energy kWh, cost £) and suggestions:", True, (210,210,210))
+            screen.blit(header, (lines_x, lines_y - line_h))
+            # show up to N items (fit screen), with a short suggestion under each
+            max_display = 8
+            for i, (iname, info) in enumerate(sorted_items[:max_display]):
+                y = lines_y + i * (line_h * 2)
+                txt = SMALL_FONT.render(f"{iname}: {info['energy']:.4f} kWh, £{info['cost']:.4f}", True, (230,230,230))
+                screen.blit(txt, (lines_x, y))
+                suggestion = suggest_improvements(iname, info.get("category", ""), info.get("epm", 0.0))
+                sug_surf = ITEM_SMALL_FONT.render(f"Suggestion: {suggestion}", True, (180,180,180))
+                screen.blit(sug_surf, (lines_x + 12, y + line_h))
+        else:
+            none_txt = ITEM_SMALL_FONT.render("No item consumption recorded this day.", True, (200,200,200))
+            screen.blit(none_txt, (lines_x, lines_y))
+
+        # draw Continue button if present
         if continue_button:
             continue_button.draw(screen)
 
