@@ -441,6 +441,7 @@ def on_start_day():
 def return_to_menu():
     global day_started, simulation_running, screen_state, current_map, current_room_page, current_room_name
     global daily_energy_kwh, daily_cost, day_elapsed_seconds, continue_button
+    global placements, placements_on, selected_map_name
     # stop any running day and clear room view
     day_started = False
     simulation_running = False
@@ -454,6 +455,14 @@ def return_to_menu():
 
     # clear any summary/continue button state
     continue_button = None
+
+    # completely reset placement state so items from previous maps don't persist
+    placements = {}
+    placements_on = {}
+
+    # clear selected map and map object so next simulation starts fresh
+    selected_map_name = None
+    current_map = None
 
     # go back to main menu
     go_to_menu()
